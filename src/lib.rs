@@ -55,13 +55,13 @@ pub fn create_session<'a, T : Serialize + for<'de> Deserialize<'de>>(name : &str
     // unless we set flag force
 
     let tmp_session_dir= "target/session_files";
-    fs::create_dir_all(tmp_session_dir).expect(&format!("Failed to create  directory {tmp_session_dir} for session files"));
+    fs::create_dir_all(tmp_session_dir).expect(&format!("Failed to create  directory {tmp_session_dir} for session files (Error 25235-11010-6922)"));
 
     if hash.is_empty() || force {
         info!("Hash for session {} empty. Trying to determine hash.", name);
         // we access the state object via a json "proxy" object  
         // - we can access fields without needing to traits... but more importantly, this enables to create session for different fields
-        let mut j : Value = serde_json::from_str(&serde_json::to_string_pretty(&state).expect("Error serializing internal state")).unwrap();
+        let mut j : Value = serde_json::from_str(&serde_json::to_string_pretty(&state).expect("Error serializing internal state (Error 1246-28944-24836)")).expect("Error parsing session state (Error 2213-735-18099)");
 
         let tmp_name = format!("{tmp_session_dir}/{}", random_name(20));
         let (code,stdout, stderr) = scone!("scone session read {} > {}", name, tmp_name);
@@ -92,10 +92,10 @@ pub fn create_session<'a, T : Serialize + for<'de> Deserialize<'de>>(name : &str
             reg.set_strict_mode(true);
             let filename = format!("{tmp_session_dir}/{}", random_name(20));
             {
-                let f = OpenOptions::new().write(true).truncate(true).create(true).open(&filename).expect("Unable to open file {filename}");
+                let f = OpenOptions::new().write(true).truncate(true).create(true).open(&filename).expect("Unable to open file {filename} (Error 23526-16225-1902)");
                 info!("session template={template}");
                 // create session from session template and check if correct
-                let _rendered = reg.render_template_to_write(template, &j, f).expect("error rendering template");
+                let _rendered = reg.render_template_to_write(template, &j, f).expect("error rendering template (Error 5164-30338-3399)");
             }
             let (code, stdout, stderr) = scone!("scone session check {}", &filename);
             if code != 0 {
@@ -123,7 +123,7 @@ pub fn create_session<'a, T : Serialize + for<'de> Deserialize<'de>>(name : &str
 }
 
 pub fn to_json_value<T : Serialize> (o : T) -> serde_json::Value {
-   let r : Value = serde_json::from_str(&serde_json::to_string_pretty(&o).expect("Error serializing Object")).expect("Error transformin to json object");
+   let r : Value = serde_json::from_str(&serde_json::to_string_pretty(&o).expect("Error serializing Object (Error 22405-15525-20124)")).expect("Error transforming to json object (Error 24639-23448-20309)");
    r
 }
 
@@ -140,11 +140,11 @@ pub fn check_mrenclave<'a, T : Serialize + for<'de> Deserialize<'de>> (state: &m
         if code == 0 {
             info!("MrEnclave = {}, stderr={}", stdout, stderr);
             j[mrenclave] = stdout.into();
-            *state = serde_json::from_value(j).expect("deserialization");
+            *state = serde_json::from_value(j).expect("deserialization (Error 25507-7831-3147)");
             Ok(())
         } else {
-            error!("Failed to determine MRENCLAVE: {}", stderr);
-            Err("Failed to determine MrEnclave")
+            error!("Failed to determine MRENCLAVE: {} (Error 13231-21732-26347)", stderr);
+            Err("Failed to determine MrEnclave (Error 16676-22493-8368)")
         }
     } else {
         Ok(())
@@ -157,18 +157,18 @@ pub trait Init {
 }
 
 pub fn write_state<T: Serialize>(state : &T, filename : &str) {
-    let state = serde_json::to_string_pretty(&state).expect("Error serializing internal state");
+    let state = serde_json::to_string_pretty(&state).expect("Error serializing internal state (Error 30804-13523-32231)");
     info!("writing state {}", state);
-    fs::write(filename, state).unwrap_or_else(|_| panic!("Unable to write file '{}'", filename));
+    fs::write(filename, state).unwrap_or_else(|_| panic!("Unable to write file '{}' (Error 8757-10881-14894)", filename));
 }
 
 pub fn read_state<T: Init + for<'de> Deserialize<'de>>(filename : &str) -> T {
     if let Ok(state) = fs::read_to_string(filename) {
         info!("Read state {} from {}", state, filename);
-        let state : T  = serde_json::from_str(&state).unwrap_or_else(|_| panic!("Cannot deserialize '{}'", filename));
+        let state : T  = serde_json::from_str(&state).unwrap_or_else(|_| panic!("Cannot deserialize '{}' (Error 18692-11485-8949)", filename));
         state
     } else {
-        info!("Failed to read state from file {}: creating this file now.", filename);
+        info!("Failed to read state from file {}: creating this file now. (Warning 4384-20698-6487)", filename);
         T::new()
     }
 }
@@ -196,9 +196,9 @@ pub fn get_otp(otp: Option<String>) -> String {
         print!("{}", prompt);
 
         // get OTP from user
-        io::stdout().flush().unwrap();
+        io::stdout().flush().expect("Error flushing stdout (Error 6759-25742-26859)");
         let mut otp = String::new();
-        io::stdin().read_line(&mut otp).expect("Error getting OTP");
+        io::stdin().read_line(&mut otp).expect("Error getting OTP (Error 30189-22111-13542)");
         otp.retain(|c| !c.is_whitespace());
         otp
     }
