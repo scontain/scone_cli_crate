@@ -55,7 +55,7 @@ pub fn create_session<'a, T : Serialize + for<'de> Deserialize<'de>>(name : &str
     // unless we set flag force
 
     let tmp_session_dir= "target/session_files";
-    fs::create_dir_all(tmp_session_dir).expect(&format!("Failed to create  directory {tmp_session_dir} for session files (Error 25235-11010-6922)"));
+    fs::create_dir_all(tmp_session_dir).expect(&format!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
 
     if hash.is_empty() || force {
         info!("Hash for session {} empty. Trying to determine hash.", name);
@@ -92,7 +92,7 @@ pub fn create_session<'a, T : Serialize + for<'de> Deserialize<'de>>(name : &str
             reg.set_strict_mode(true);
             let filename = format!("{tmp_session_dir}/{}", random_name(20));
             {
-                let f = OpenOptions::new().write(true).truncate(true).create(true).open(&filename).expect("Unable to open file {filename} (Error 23526-16225-1902)");
+                let f = OpenOptions::new().write(true).truncate(true).create(true).open(&filename).expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
                 info!("session template={template}");
                 // create session from session template and check if correct
                 let _rendered = reg.render_template_to_write(template, &j, f).expect("error rendering template (Error 5164-30338-3399)");
@@ -140,7 +140,7 @@ pub fn check_mrenclave<'a, T : Serialize + for<'de> Deserialize<'de>> (state: &m
         if code == 0 {
             info!("MrEnclave = {}, stderr={}", stdout, stderr);
             j[mrenclave] = stdout.into();
-            *state = serde_json::from_value(j).expect("deserialization (Error 25507-7831-3147)");
+            *state = serde_json::from_value(j).expect("deserialization failed (Error 25507-7831-3147)");
             Ok(())
         } else {
             error!("Failed to determine MRENCLAVE: {} (Error 13231-21732-26347)", stderr);
