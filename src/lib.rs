@@ -11,7 +11,7 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 
-static CLI_IMAGE : &str = "registry.scontain.com:5050/sconecuratedimages/sconecli:alpine3.15-issue-1617"; // "registry.scontain.com:5050/sconecuratedimages/sconecli";
+static CLI_IMAGE : &str = "registry.scontain.com:5050/sconecuratedimages/cicd/sconecli:latest"; // "registry.scontain.com:5050/sconecuratedimages/sconecli";
 
 pub fn is_running_in_container() -> bool {
     Path::new("/.dockerenv").exists()
