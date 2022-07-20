@@ -136,7 +136,7 @@ pub fn check_mrenclave<'a, T : Serialize + for<'de> Deserialize<'de>> (state: &m
     let mut j : Value = to_json_value(&state);
 
     if j[mrenclave] == "" || force {
-        let (code,stdout,stderr)=sh!(r#"docker run --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#, j[image], j[binary]);
+        let (code,stdout,stderr)=sh!(r#"docker run --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#, j[image], j[binary]);
         if code == 0 {
             info!("MrEnclave = {}, stderr={}", stdout, stderr);
             j[mrenclave] = stdout.into();
