@@ -10,16 +10,22 @@ use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::Path;
+use std::env;
 
-static CLI_IMAGE : &str = "registry.scontain.com:5050/sconecuratedimages/cicd/sconecli:latest"; // "registry.scontain.com:5050/sconecuratedimages/sconecli";
 
 pub fn is_running_in_container() -> bool {
     Path::new("/.dockerenv").exists()
 }
 
 pub fn execute_with_docker(shell: &str, cmd: &str) -> (i32, String, String) {
+
+    let repo = match env::var("SCONECTL_REPO") {
+        Ok(repo) =>  repo,
+        Err(_err) =>  format!("registry.scontain.com:5050")
+    };
+
     // we speed up calls if we already running inside of a container!
-    let mut w_prefix = format!(r#"docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/root"     -w /root  {CLI_IMAGE}    {cmd}"#);
+    let mut w_prefix = format!(r#"docker run --entrypoint="" --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/root"     -w /root  {repo}/cicd/sconecli:latest  {cmd}"#);
     if is_running_in_container() {
         w_prefix = format!(r#"{cmd}"#);
     }
@@ -136,7 +142,7 @@ pub fn check_mrenclave<'a, T : Serialize + for<'de> Deserialize<'de>> (state: &m
     let mut j : Value = to_json_value(&state);
 
     if j[mrenclave] == "" || force {
-        let (code,stdout,stderr)=sh!(r#"docker run --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#, j[image], j[binary]);
+        let (code,stdout,stderr)=sh!(r#"docker run --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#, j[image], j[binary]);
         if code == 0 {
             info!("MrEnclave = {}, stderr={}", stdout, stderr);
             j[mrenclave] = stdout.into();
