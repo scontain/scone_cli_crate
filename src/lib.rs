@@ -25,7 +25,9 @@ pub fn execute_with_docker(shell: &str, cmd: &str) -> (i32, String, String) {
     };
 
     // we speed up calls if we already running inside of a container!
-    let mut w_prefix = format!(r#"docker run --entrypoint="" --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/root"     -w /root  {repo}/cicd/sconecli:latest  {cmd}"#);
+    // fix me
+    let id_cmd=r#"id -u $USER"#;
+    let mut w_prefix = format!(r#"docker run --entrypoint="" --rm -e DOCKER_HOST=unix:///run/user/$USER/podman/podman.sock -v /run/user/1021/podman/podman.sock:/run/user/1021/podman/podman.sock:ro -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/root"     -w /root  {repo}/cicd/sconecli:latest  {cmd}"#);
     if is_running_in_container() {
         w_prefix = format!(r#"{cmd}"#);
     }
@@ -51,7 +53,7 @@ pub fn execute_with_docker(shell: &str, cmd: &str) -> (i32, String, String) {
 #[macro_export]
 macro_rules! scone {
     ( $( $cmd:tt )* ) => {{
-        $crate::execute_with_docker("sh", &format!($( $cmd )*))
+        sh!("{}", &format!($( $cmd )*))
     }};
 }
 
