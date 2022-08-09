@@ -14,20 +14,26 @@ use std::env;
 
 
 pub fn is_running_in_container() -> bool {
-    Path::new("/.dockerenv").exists()
+    // podman create /run/.containerenv inside containers
+    // https://github.com/containers/podman/blob/main/docs/source/markdown/podman-run.1.md.in
+    Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
 }
 
-pub fn execute_with_docker(shell: &str, cmd: &str) -> (i32, String, String) {
+pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
 
     let repo = match env::var("SCONECTL_REPO") {
         Ok(repo) =>  repo,
         Err(_err) =>  format!("registry.scontain.com:5050")
     };
 
+    let vol = match env::var("DOCKER_HOST") {
+        Ok(val) => { let vol = val.strip_prefix("unix://").unwrap_or(&val).to_string(); format!(r#"-e DOCKER_HOST="{val}" -v "{vol}":"{vol}""#) },
+        Err(_e) => format!("-v /var/run/docker.sock:/var/run/docker.sock"),
+    };
+
+    let mut w_prefix = format!(r#"docker run --entrypoint="" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/cicd/sconecli:latest  {cmd}"#);
+
     // we speed up calls if we already running inside of a container!
-    // fix me
-    let id_cmd=r#"id -u $USER"#;
-    let mut w_prefix = format!(r#"docker run --entrypoint="" --rm -e DOCKER_HOST=unix:///run/user/$USER/podman/podman.sock -v /run/user/1021/podman/podman.sock:/run/user/1021/podman/podman.sock:ro -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/root"     -w /root  {repo}/cicd/sconecli:latest  {cmd}"#);
     if is_running_in_container() {
         w_prefix = format!(r#"{cmd}"#);
     }
@@ -53,7 +59,7 @@ pub fn execute_with_docker(shell: &str, cmd: &str) -> (i32, String, String) {
 #[macro_export]
 macro_rules! scone {
     ( $( $cmd:tt )* ) => {{
-        sh!("{}", &format!($( $cmd )*))
+        $crate::execute_scone_cli("sh", &format!($( $cmd )*))
     }};
 }
 
