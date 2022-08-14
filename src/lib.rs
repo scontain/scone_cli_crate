@@ -23,7 +23,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
 
     let repo = match env::var("SCONECTL_REPO") {
         Ok(repo) =>  repo,
-        Err(_err) =>  format!("registry.scontain.com:5050")
+        Err(_err) =>  format!("registry.scontain.com:5050/sconectl")
     };
 
     let vol = match env::var("DOCKER_HOST") {
@@ -31,7 +31,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
         Err(_e) => format!("-v /var/run/docker.sock:/var/run/docker.sock"),
     };
 
-    let mut w_prefix = format!(r#"docker run --entrypoint="" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/cicd/sconecli:latest  {cmd}"#);
+    let mut w_prefix = format!(r#"docker run --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:latest  {cmd}"#);
 
     // we speed up calls if we already running inside of a container!
     if is_running_in_container() {
