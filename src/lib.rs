@@ -21,7 +21,7 @@ pub fn is_running_in_container() -> bool {
 pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     let repo = match env::var("SCONECTL_REPO") {
         Ok(repo) => repo,
-        Err(_err) => format!("registry.scontain.com:5050/sconectl"),
+        Err(_err) => "registry.scontain.com:5050/sconectl".to_string(),
     };
 
     let vol = match env::var("DOCKER_HOST") {
@@ -29,7 +29,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
             let vol = val.strip_prefix("unix://").unwrap_or(&val).to_string();
             format!(r#"-e DOCKER_HOST="{val}" -v "{vol}":"{vol}""#)
         }
-        Err(_e) => format!("-v /var/run/docker.sock:/var/run/docker.sock"),
+        Err(_e) => "-v /var/run/docker.sock:/var/run/docker.sock".to_string(),
     };
 
     let mut w_prefix = format!(
@@ -80,7 +80,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     // unless we set flag force
 
     let tmp_session_dir = "target/session_files";
-    fs::create_dir_all(tmp_session_dir).expect(&format!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
+    fs::create_dir_all(tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
 
     if hash.is_empty() || force {
         info!("Hash for session {} empty. Trying to determine hash.", name);
@@ -101,11 +101,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             let (code, stdout, stderr) = scone!("scone session verify {}", tmp_name);
             let _ = fs::remove_file(tmp_name);
             if code == 0 {
-                info!(
-                    "OK: verified  session {}: predecessor='{}'",
-                    name,
-                    stdout.clone()
-                );
+                info!("OK: verified  session {}: predecessor='{}'", name, stdout);
                 j["predecessor_key"] = "predecessor".into();
                 j["predecessor"] = stdout.clone().into();
             } else {
