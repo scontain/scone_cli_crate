@@ -38,7 +38,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
 
     // we speed up calls if we already running inside of a container!
     if is_running_in_container() {
-        w_prefix = format!(r#"{cmd}"#);
+        w_prefix = cmd.to_string();
     }
     let mut command = {
         let mut command = ::std::process::Command::new(shell);
