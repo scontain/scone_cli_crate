@@ -21,7 +21,7 @@ pub fn is_running_in_container() -> bool {
 pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     let repo = match env::var("SCONECTL_REPO") {
         Ok(repo) => repo,
-        Err(_err) => "registry.scontain.com:5050/sconectl".to_string(),
+        Err(_err) => "registry.scontain.com/sconectl".to_string(),
     };
 
     let vol = match env::var("DOCKER_HOST") {
@@ -132,8 +132,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                     .expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
                 info!("session template={template}");
                 // create session from session template and check if correct
-                let _rendered = reg
-                    .render_template_to_write(template, &j, f)
+                reg.render_template_to_write(template, &j, f)
                     .expect("error rendering template (Error 5164-30338-3399)");
             }
             let (code, stdout, stderr) = scone!("scone session check {}", &filename);
