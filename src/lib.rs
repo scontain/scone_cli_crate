@@ -1,4 +1,5 @@
 use handlebars::Handlebars;
+use handlebars::JsonValue;
 use log::{error, info};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -66,7 +67,6 @@ macro_rules! scone {
         $crate::execute_scone_cli("sh", &format!($( $cmd )*))
     }};
 }
-
 
 pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
     let mut command = {
@@ -225,7 +225,6 @@ pub enum PolicyHandling {
     EncryptedOnly,
 }
 
-
 pub fn get_creator() -> String {
     info!("Determine the creator Identity");
 
@@ -234,12 +233,10 @@ pub fn get_creator() -> String {
         info!("creator identity:  {stdout}");
         stdout
     } else {
-        error!(
-            "Error determining the creator identity:\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        error!("Error determining the creator identity:\nstdout:\n{stdout}\nstderr:\n{stderr}");
         panic!("Error determining the creator identity. (Error 11119-25109-32878)");
     }
 }
-
 
 pub fn get_signer() -> String {
     info!("Determine the signer identity");
@@ -250,7 +247,8 @@ pub fn get_signer() -> String {
         stdout
     } else {
         error!(
-            "Error determining the creator signing identity:\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            "Error determining the creator signing identity:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
         panic!("Error determining creator signing identity. (Error 11119-25109-82392)");
     }
 }
@@ -263,14 +261,19 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     mode: PolicyHandling,
     encryption_key: &Option<String>,
     scone_cas_addr: &str,
+    weight: i64,
 ) -> Result<String, &'static str> {
     // if we already know the hash of the session, we do not try to create
     // unless we set flag force
 
-    let tmp_session_dir = "target/session_files";    
+    let tmp_session_dir = "target/session_files";
     fs::create_dir_all(tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
     let binding = str::replace(
-        &str::replace(&str::replace(&name, ":", "-"), "/", "-"),
+        &str::replace(
+            &str::replace(&str::replace(&name, "_", "-"), ":", "-"),
+            "/",
+            "-",
+        ),
         ".",
         "-",
     );
@@ -284,8 +287,8 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     .expect("Error parsing session state (Error 2213-735-18099)");
 
     // try to read existing session from filesystem and try to extract predecessor from this
-    if let Ok(content) = fs::read_to_string(&predecessor_fname)  {
-        j["predecessor"] = serde_json::Value::String(content);    
+    if let Ok(content) = fs::read_to_string(&predecessor_fname) {
+        j["predecessor"] = serde_json::Value::String(content);
     } else {
         // otherwise: assume that this is a new policy to write
         j["predecessor"] = "~".into();
@@ -322,7 +325,10 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         // let _ = fs::remove_file(&filename);
         return Err("Session template seems to be incorrect - have a look at file. (Error 18583-11027-29850)");
     }
-    info!("Session template for {}: is correct: {}", name, stdout);
+    info!(
+        "Session template for session {}: is correct: {}",
+        name, stdout
+    );
 
     use std::fs::File;
 
@@ -333,120 +339,150 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     if code == 0 {
         info!("Created session {name}: '{stderr}'");
         let _ = fs::remove_file(&filename);
-        let (code, stdout, _stderr) = scone!("scone session calculate-hash {tmp_session_dir}/signed_{out_fname}.json");
+        let (code, stdout, _stderr) =
+            scone!("scone session calculate-hash {tmp_session_dir}/signed_{out_fname}.json");
         if code == 0 {
             info!("Session digest: '{stdout}' (stderr={stderr})");
-            let mut f = File::create(&predecessor_fname).expect("Failed to create predecessor file (Error 6283-22176-27631)");
-            write!(f, "{stdout}").expect("Failed to write predecessor (signed) (Error 356-626-21265)");
+            let mut f = File::create(&predecessor_fname)
+                .expect("Failed to create predecessor file (Error 6283-22176-27631)");
+            write!(f, "{stdout}")
+                .expect("Failed to write predecessor (signed) (Error 356-626-21265)");
             return_value = Ok(stdout);
         } else {
-            return Err("failed to determine session hash. (Error 1078-16432-19559)") 
+            return Err("failed to determine session hash. (Error 1078-16432-19559)");
         }
     } else {
         info!("Creation of session {name} failed: {stderr} - see file {filename}");
-        return Err("failed to sign session. (Error 5540-3086-16296)")
+        return Err("failed to sign session. (Error 5540-3086-16296)");
     }
     let _ = fs::remove_file(&filename);
 
     // try to encrypt the session -- need CAS key
     let encrypted_session_json = format!("{tmp_session_dir}/encrypted_{out_fname}.json");
-    if let Some(key) = encryption_key  {
-        let (code, stdout, stderr) = scone!("scone session encrypt --key {key} {session_json} > {encrypted_session_json}");
+    if let Some(key) = encryption_key {
+        let (code, stdout, stderr) =
+            scone!("scone session encrypt --key {key} {session_json} > {encrypted_session_json}");
+        if code == 0 {
+            info!(
+                "Created encrypted session {name} --key {key} - {encrypted_session_json}: {stdout}"
+            );
+        } else {
+            info!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json}");
+            return Err("failed to encrypt session. (Error 29926-22481-2946)");
+        }
+    } else {
+        // todo: check if we need to encrypt, i.e., mode requires encryption
+        info!("No encryption key specified ... using key from CLI");
+        let (code, stdout, stderr) =
+            scone!("scone session encrypt {session_json} > {encrypted_session_json}");
         if code == 0 {
             info!("Created encrypted session {name} - {encrypted_session_json}: {stdout}");
         } else {
             info!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json}");
-            return Err("failed to encrypt session. (Error 29926-22481-2946)")
+            return Err("failed to encrypt session. (Error 29926-22481-23832)");
         }
-    } else {
-        // todo: check if we need to encrypt, i.e., mode requires encryption
-        info!("No encryption key specified ... skipping encryption");
     }
-    
+
     // create signed manifests
-    let policy : Value = if let Ok(content) = fs::read_to_string(&session_json)  {
+    let policy: Value = if let Ok(content) = fs::read_to_string(&session_json) {
         if let Ok(policy) = serde_json::from_str(&content) {
             policy
         } else {
             info!("Failed to parse signed session {name} from file {session_json}");
-            return Err("failed to read signed session. (Error 24175-5973-18109)")
-        }   
+            return Err("failed to read signed session. (Error 24175-5973-18109)");
+        }
     } else {
         info!("Failed to read signed session {name} from file {session_json}");
-        return Err("failed to read signed session. (Error 25390-21169-31176)")
+        return Err("failed to read signed session. (Error 25390-21169-31176)");
     };
 
     let signed_session_manifest = format!("{tmp_session_dir}/signed_manifest_{out_fname}.yaml");
     let policy_content = &policy["session"];
     let signature = &policy["signatures"][0]["signature"];
-    let manifest_template = format!(r#"
+    let manifest_template = format!(
+        r#"
 apiVersion: cas.scone.cloud/v1beta1
 kind: SignedPolicy
 metadata:
     name: {out_fname}
+    annotations:
+      "helm.sh/hook": "pre-install,pre-upgrade"
+      "helm.sh/hook-weight": "{weight}"
 spec:
-  casAddress: {scone_cas_addr}
+  casAddress: https://{scone_cas_addr}:8081
   policy: {policy_content}
   signatures:
     - signer: {signer}
       signature: {signature}
-"#);
+"#
+    );
 
-    let mut f = File::create(&signed_session_manifest).expect("Failed to create manifest file (Error 19234-20626-20326)");
-    write!(f, "{manifest_template}").expect("Failed to write signed manifest (Error 827-11069-14338)");
+    let mut f = File::create(&signed_session_manifest)
+        .expect("Failed to create manifest file (Error 19234-20626-20326)");
+    write!(f, "{manifest_template}")
+        .expect("Failed to write signed manifest (Error 827-11069-14338)");
 
     // create encrypted manifest
-    if let Some(key) = encryption_key  {
-        let policy : Value = if let Ok(content) = fs::read_to_string(&encrypted_session_json)  {
-            if let Ok(policy) = serde_json::from_str(&content) {
-                policy
-            } else {
-                info!("Failed to parse encrypted session {name} from file {encrypted_session_json}");
-                return Err("failed to read signed session. (Error 24175-5973-18210)")
-            }   
+    //    if let Some(key) = encryption_key  {
+    let policy: Value = if let Ok(content) = fs::read_to_string(&encrypted_session_json) {
+        if let Ok(policy) = serde_json::from_str(&content) {
+            policy
         } else {
-            info!("Failed to read encrypted session {name} from file {encrypted_session_json}");
-            return Err("failed to read signed session. (Error 25390-21169-31286)")
-        };
-
-        let encrypted_session_manifest = format!("{tmp_session_dir}/encrypted_manifest_{out_fname}.yaml");
-        let policy_content = &policy["encrypted_session"];
-        let manifest_template = format!(r#"
-    apiVersion: cas.scone.cloud/v1beta1
-    kind: EncryptedPolicy
-    metadata:
-      name: {out_fname}
-    spec:
-      casAddress: {scone_cas_addr}
-      policy: {policy_content}
-      encryptionKey: {key}
-    "#);
-
-        let mut f = File::create(&encrypted_session_manifest).expect("Failed to create encrypted manifest file (Error 19234-20626-20427)");
-        write!(f, "{manifest_template}").expect("Failed to write encrypted manifest (Error 832-23323-14338)");
-
-        // check if we need to upload the session to CAS directly
-        if mode == PolicyHandling::EncryptedManifest {
-            let (code, stdout, stderr) = local!("kubectl apply -f {encrypted_session_manifest}");
-            if code == 0 {
-                info!("Created encrypted session {name} with kubectl: {stdout}");
-            } else {
-                info!("ERROR: Creation of encrypted session {name} failed: {stderr} - see file {encrypted_session_manifest}");
-                return_value = Err("failed to create session. (Error 11902-13469-4444)")
-            }
+            info!("Failed to parse encrypted session {name} from file {encrypted_session_json}");
+            return Err("failed to read signed session. (Error 24175-5973-18210)");
         }
-        
-    }
+    } else {
+        info!("Failed to read encrypted session {name} from file {encrypted_session_json}");
+        return Err("failed to read signed session. (Error 25390-21169-31286)");
+    };
+
+    let encrypted_session_manifest =
+        format!("{tmp_session_dir}/encrypted_manifest_{out_fname}.yaml");
+    let policy_content = &policy["encrypted_session"];
+    let key = &policy["encryption_key"];
+
+    // todo: make port of casAddress configurable
+    let manifest_template = format!(
+        r#"
+apiVersion: cas.scone.cloud/v1beta1
+kind: EncryptedPolicy
+metadata:
+    name: {out_fname}
+    annotations:
+      "helm.sh/hook": "pre-install,pre-upgrade"
+      "helm.sh/hook-weight": "{weight}"
+spec:
+    casAddress: https://{scone_cas_addr}:8081
+    policy: {policy_content}
+    encryptionKey: {key}
+"#
+    );
+
+    let mut f = File::create(&encrypted_session_manifest)
+        .expect("Failed to create encrypted manifest file (Error 19234-20626-20427)");
+    write!(f, "{manifest_template}")
+        .expect("Failed to write encrypted manifest (Error 832-23323-14338)");
+
+    // // check if we need to upload the session to CAS directly
+    // if mode == PolicyHandling::EncryptedManifest {
+    //     let (code, stdout, stderr) = local!("kubectl apply -f {encrypted_session_manifest}");
+    //     if code == 0 {
+    //         info!("Created encrypted session {name} with kubectl: {stdout}");
+    //     } else {
+    //         info!("ERROR: Creation of encrypted session {name} failed: {stderr} - see file {encrypted_session_manifest}");
+    //         return_value = Err("failed to create session. (Error 11902-13469-4444)")
+    //     }
+    // }
 
     // check if we need to upload the session to CAS directly
     if mode == PolicyHandling::Upload {
-            let (code, stdout, stderr) = scone!("scone session create {session_json}");
-            if code == 0 {
-                info!("Created session {name}: {stdout}");
-            } else {
-                info!("ERROR: Creation of session {name} failed: {stderr} - see file {session_json}");
-                return_value = Err("failed to create session. (Error 11902-13469-3222)")
-            }
+        let (code, stdout, stderr) = scone!("scone session create {session_json}");
+        if code == 0 {
+            info!("Created session {name}: {stdout}");
+        } else {
+            info!("ERROR: Creation of session {name} failed: {stderr} - see file {session_json}");
+            return_value = Err("failed to create session. (Error 11902-13469-3222)")
+        }
     }
 
     // check if we need to upload the session to CAS directly
@@ -463,7 +499,6 @@ spec:
     return_value
 }
 
-
 pub fn to_json_value<T: Serialize>(o: T) -> serde_json::Value {
     let r: Value = serde_json::from_str(
         &serde_json::to_string_pretty(&o)
@@ -477,6 +512,9 @@ pub fn to_json_value<T: Serialize>(o: T) -> serde_json::Value {
 //    let state : T  = serde_json::from_value(&o).expect("Cannot deserialize object");
 //    state
 //}
+
+// todo: replace by determine_mrenclave
+// bug: mrenclave is NOT set!
 
 pub fn check_mrenclave<'a, T: Serialize + for<'de> Deserialize<'de>>(
     state: &mut T,
@@ -508,6 +546,34 @@ pub fn check_mrenclave<'a, T: Serialize + for<'de> Deserialize<'de>>(
         }
     } else {
         Ok(())
+    }
+}
+
+/// given a json state -> set MrEnclave
+pub fn determine_mrenclave(
+    state: &mut JsonValue,
+    mrenclave: &str,
+    image: &str,
+    binary: &str,
+) -> Result<(), &'static str> {
+    let mut j: Value = to_json_value(&state);
+
+    let (code, stdout, stderr) = sh!(
+        r#"docker run --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+        j[image],
+        j[binary]
+    );
+    if code == 0 {
+        info!("MrEnclave = {}, stderr={}", stdout, stderr);
+        j[mrenclave] = stdout.into();
+        *state = serde_json::from_value(j).expect("deserialization failed (Error 25507-7831-3147)");
+        Ok(())
+    } else {
+        error!(
+            "Failed to determine MRENCLAVE: {} (Error 13231-21732-26347)",
+            stderr
+        );
+        Err("Failed to determine MrEnclave (Error 16676-22493-8368)")
     }
 }
 
