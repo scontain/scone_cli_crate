@@ -352,7 +352,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             return Err("failed to determine session hash. (Error 1078-16432-19559)");
         }
     } else {
-        info!("Creation of session {name} failed: {stderr} - see file {filename}");
+        info!("Signing of session {name} failed: {stderr} - see file {filename} (32923-49430-2382389)");
         return Err("failed to sign session. (Error 5540-3086-16296)");
     }
     let _ = fs::remove_file(&filename);
