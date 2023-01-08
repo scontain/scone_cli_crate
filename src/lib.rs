@@ -71,7 +71,7 @@ macro_rules! scone {
 pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
     let mut command = {
         let mut command = ::std::process::Command::new(shell);
-        command.arg("-c").arg(cmd.to_string());
+        command.arg("-c").arg(cmd);
         command
     };
 
@@ -270,7 +270,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     fs::create_dir_all(tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
     let binding = str::replace(
         &str::replace(
-            &str::replace(&str::replace(&name, "_", "-"), ":", "-"),
+            &str::replace(&str::replace(name, "_", "-"), ":", "-"),
             "/",
             "-",
         ),
@@ -296,7 +296,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     let signer = get_signer();
     let creator = get_creator();
     let session_creator = format!("signer: {signer}");
-    j["CREATOR"] = serde_json::Value::String(creator.clone());
+    j["CREATOR"] = serde_json::Value::String(creator);
     j["SIGNER"] = serde_json::Value::String(signer.clone());
     j["SESSION_CREATOR"] = serde_json::Value::String(session_creator); // we always sign sessions: hence, the creator is the signer
     let mut reg = Handlebars::new();
@@ -458,7 +458,7 @@ spec:
 "#
     );
 
-    let mut f = File::create(&encrypted_session_manifest)
+    let mut f = File::create(encrypted_session_manifest)
         .expect("Failed to create encrypted manifest file (Error 19234-20626-20427)");
     write!(f, "{manifest_template}")
         .expect("Failed to write encrypted manifest (Error 832-23323-14338)");
@@ -585,20 +585,15 @@ pub fn write_state<T: Serialize>(state: &T, filename: &str) {
     let state = serde_json::to_string_pretty(&state)
         .expect("Error serializing internal state (Error 30804-13523-32231)");
     info!("writing state {}", state);
-    fs::write(filename, state).unwrap_or_else(|_| {
-        panic!(
-            "Unable to write file '{}' (Error 8757-10881-14894)",
-            filename
-        )
-    });
+    fs::write(filename, state)
+        .unwrap_or_else(|_| panic!("Unable to write file '{filename}' (Error 8757-10881-14894)"));
 }
 
 pub fn read_state<T: Init + for<'de> Deserialize<'de>>(filename: &str) -> T {
     if let Ok(state) = fs::read_to_string(filename) {
         info!("Read state {} from {}", state, filename);
-        let state: T = serde_json::from_str(&state).unwrap_or_else(|_| {
-            panic!("Cannot deserialize '{}' (Error 18692-11485-8949)", filename)
-        });
+        let state: T = serde_json::from_str(&state)
+            .unwrap_or_else(|_| panic!("Cannot deserialize '{filename}' (Error 18692-11485-8949)"));
         state
     } else {
         info!(
@@ -628,7 +623,7 @@ pub fn get_otp(otp: Option<String>) -> String {
             - Starting containers can take some while. Hence, wait for a new QR code to appear on your authenticator.
         Type OTP and press enter: "#;
 
-        print!("{}", prompt);
+        print!("{prompt}");
 
         // get OTP from user
         io::stdout()
