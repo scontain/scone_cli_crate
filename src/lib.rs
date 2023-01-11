@@ -288,8 +288,10 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
 
     // try to read existing session from filesystem and try to extract predecessor from this
     if let Ok(content) = fs::read_to_string(&predecessor_fname) {
+        info!("Found predecessor {predecessor_fname} {content}");
         j["predecessor"] = serde_json::Value::String(content);
     } else {
+        info!("Did not find the predecessor for {predecessor_fname}");
         // otherwise: assume that this is a new policy to write
         j["predecessor"] = "~".into();
     }
