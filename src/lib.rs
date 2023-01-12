@@ -300,7 +300,8 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     let session_creator = format!("signer: {signer}");
     j["CREATOR"] = serde_json::Value::String(creator);
     j["SIGNER"] = serde_json::Value::String(signer.clone());
-    j["SESSION_CREATOR"] = serde_json::Value::String(session_creator); // we always sign sessions: hence, the creator is the signer
+    j["SESSION_CREATOR"] = serde_json::Value::String(session_creator.clone()); // we always sign sessions: hence, the creator is the signer
+    j["session_creator"] = serde_json::Value::String(session_creator); // we always sign sessions: hence, the creator is the signer
     let mut reg = Handlebars::new();
     reg.set_strict_mode(true);
     let filename = format!("{tmp_session_dir}/{}", random_name(20));
