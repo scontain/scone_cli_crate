@@ -104,12 +104,13 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     template: &str,
     state: &T,
     force: bool,
+    target_dir: &String,
 ) -> Result<String, &'static str> {
     // if we already know the hash of the session, we do not try to create
     // unless we set flag force
 
-    let tmp_session_dir = "target/session_files";
-    fs::create_dir_all(tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
+    let tmp_session_dir = format!("{target_dir}/session_files");
+    fs::create_dir_all(&tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
 
     if hash.is_empty() || force {
         info!("Hash for session {} empty. Trying to determine hash.", name);
@@ -121,6 +122,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         )
         .expect("Error parsing session state (Error 2213-735-18099)");
         j["CREATOR"] = "CREATOR".into();
+        j["RANDOM"] = random_name(20).into(); // define some RANDOM value to ensure that sessions will not have a predictable hash value
 
         let tmp_name = format!("{tmp_session_dir}/{}", random_name(20));
         let (code, stdout, stderr) = scone!("scone session read {} > {}", name, tmp_name);
@@ -262,12 +264,13 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     encryption_key: &Option<String>,
     scone_cas_addr: &str,
     weight: i64,
+    target_dir: &String,
 ) -> Result<String, &'static str> {
     // if we already know the hash of the session, we do not try to create
     // unless we set flag force
 
-    let tmp_session_dir = "target/session_files";
-    fs::create_dir_all(tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
+    let tmp_session_dir = format!("{target_dir}/session_files");
+    fs::create_dir_all(&tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
     let binding = str::replace(
         &str::replace(
             &str::replace(&str::replace(name, "_", "-"), ":", "-"),
@@ -287,18 +290,22 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     .expect("Error parsing session state (Error 2213-735-18099)");
 
     // try to read existing session from filesystem and try to extract predecessor from this
-    if let Ok(content) = fs::read_to_string(&predecessor_fname) {
-        info!("Found predecessor {predecessor_fname} {content}");
-        j["predecessor"] = serde_json::Value::String(content);
-    } else {
-        info!("Did not find the predecessor for {predecessor_fname}");
-        // otherwise: assume that this is a new policy to write
-        j["predecessor"] = "~".into();
+    match fs::read_to_string(&predecessor_fname) {
+        Ok(content) => {
+            info!("Found predecessor {predecessor_fname} {content}");
+            j["predecessor"] = serde_json::Value::String(content);
+        }
+        Err(err) => {
+            info!("Did not find the predecessor for {predecessor_fname}: Error {err} ");
+            // otherwise: assume that this is a new policy to write
+            j["predecessor"] = "~".into();
+        }
     }
     let signer = get_signer();
     let creator = get_creator();
     let session_creator = format!("signer: {signer}");
     j["CREATOR"] = serde_json::Value::String(creator);
+    j["RANDOM"] = random_name(20).into();
     j["SIGNER"] = serde_json::Value::String(signer.clone());
     j["SESSION_CREATOR"] = serde_json::Value::String(session_creator.clone()); // we always sign sessions: hence, the creator is the signer
     j["session_creator"] = serde_json::Value::String(session_creator); // we always sign sessions: hence, the creator is the signer
