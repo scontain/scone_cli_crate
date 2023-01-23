@@ -1,6 +1,6 @@
 use handlebars::Handlebars;
 use handlebars::JsonValue;
-use log::{error, info};
+use log::{error, info, trace, warn};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::io::Write;
 use std::path::Path;
+use get_if_addrs;
 
 pub fn is_running_in_container() -> bool {
     // podman create /run/.containerenv inside containers
@@ -25,10 +26,33 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
         Err(_err) => "registry.scontain.com/sconectl".to_string(),
     };
 
+    // 172.17.0.0 is default docker network
+    let mut docker0_ip = String::from("172.17.0.1");
+    let mut docker0_if_exist = false;
+    for iface in get_if_addrs::get_if_addrs().unwrap() {
+        trace!("Found interface: {}.", iface.name);
+        if iface.name == "docker0" {
+            docker0_if_exist = true;
+            docker0_ip = iface.ip().to_string();
+            break;
+        }
+    }
+
     let vol = match env::var("DOCKER_HOST") {
         Ok(val) => {
-            let vol = val.strip_prefix("unix://").unwrap_or(&val).to_string();
-            format!(r#"-e DOCKER_HOST="{val}" -v "{vol}":"{vol}""#)
+            if val.starts_with("unix://") {
+                let vol = val.strip_prefix("unix://").unwrap_or(&val).to_string();
+                format!(r#"-e DOCKER_HOST="{val}" -v "{vol}":"{vol}""#)
+            } else if val.starts_with("tcp://") {
+                if ! docker0_if_exist {
+                    warn!("Interface 'docker0' was not found but docker socket with TCP schema was detected. Will use default docker network 172.17.0.1.");
+                }
+                warn!("Docker socket with TCP schema was detected. Will use DOCKER_HOST={} to access docker socket inside container.", docker0_ip );
+                format!(r#"-e DOCKER_HOST="{docker0_ip}""#)
+            } else {
+                warn!("Docker socket: {} with unknown schema was detected.", val);
+                format!(r#"-e DOCKER_HOST=/var/run/docker.sock -v /var/run/docker.sock:/var/run/docker.sock"#)
+            }
         }
         Err(_e) => "-v /var/run/docker.sock:/var/run/docker.sock".to_string(),
     };
