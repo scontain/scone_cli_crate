@@ -60,7 +60,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     };
 
     let mut w_prefix = format!(
-        r#"docker run --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:latest  {cmd}"#
+        r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:latest  {cmd}"#
     );
 
     // we speed up calls if we already running inside of a container!
@@ -563,7 +563,7 @@ pub fn check_mrenclave<'a, T: Serialize + for<'de> Deserialize<'de>>(
 
     if j[mrenclave] == "" || force {
         let (code, stdout, stderr) = sh!(
-            r#"docker run --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+            r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
             j[image],
             j[binary]
         );
@@ -595,7 +595,7 @@ pub fn determine_mrenclave(
     let mut j: Value = to_json_value(&state);
 
     let (code, stdout, stderr) = sh!(
-        r#"docker run --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+        r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
         j[image],
         j[binary]
     );
