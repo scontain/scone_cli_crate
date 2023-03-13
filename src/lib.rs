@@ -43,12 +43,15 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
             if val.starts_with("unix://") {
                 let vol = val.strip_prefix("unix://").unwrap_or(&val).to_string();
                 format!(r#"-e DOCKER_HOST="{val}" -v "{vol}":"{vol}""#)
-            } else if val.starts_with("tcp://") || val.starts_with(&docker0_ip) {
+            } else if val.starts_with("tcp://") {
+                warn!("Docker socket with TCP schema was detected. Will use DOCKER_HOST={val} to access docker socket inside container.");
+                format!(r#"-e DOCKER_HOST="{val}""#)
+            } else if val.starts_with(&docker0_ip) {
                 if !docker0_if_exist {
                     warn!("Interface 'docker0' was not found but docker socket with TCP schema was detected. Will use default docker network 172.17.0.1.");
                 }
-                warn!("Docker socket with TCP schema was detected. Will use DOCKER_HOST={} to access docker socket inside container.", docker0_ip );
-                format!(r#"-e DOCKER_HOST="{docker0_ip}""#)
+                warn!("IP address was detected. Will use DOCKER_HOST=tcp://{docker0_ip} to access docker socket inside container.");
+                format!(r#"-e DOCKER_HOST="tcp://{docker0_ip}""#)
             } else {
                 warn!("Docker socket: {} with unknown schema was detected.", val);
                 format!(
