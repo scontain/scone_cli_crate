@@ -1,7 +1,7 @@
-use get_if_addrs;
 use handlebars::Handlebars;
 use handlebars::JsonValue;
-use log::{error, info, trace, warn};
+use log::{error, info, warn};
+use once_cell::sync::OnceCell;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,9 @@ use std::fs;
 use std::fs::OpenOptions;
 use std::io;
 use std::io::Write;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::Path;
+use std::sync::Mutex;
 
 pub fn is_running_in_container() -> bool {
     // podman create /run/.containerenv inside containers
@@ -20,23 +22,25 @@ pub fn is_running_in_container() -> bool {
     Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
 }
 
+static VERSION: OnceCell<Mutex<String>> = OnceCell::new();
+
+fn ensure_version() -> &'static Mutex<String> {
+    VERSION.get_or_init(|| Mutex::new(format!("latest")))
+}
+
+pub fn set_version(version: String) {
+    *ensure_version().lock().unwrap() = version;
+}
+
+pub fn get_version() -> String {
+    (*ensure_version().lock().unwrap()).clone()
+}
+
 pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     let repo = match env::var("SCONECTL_REPO") {
         Ok(repo) => repo,
         Err(_err) => "registry.scontain.com/sconectl".to_string(),
     };
-
-    // 172.17.0.0 is default docker network
-    let mut docker0_ip = String::from("172.17.0.1");
-    let mut docker0_if_exist = false;
-    for iface in get_if_addrs::get_if_addrs().unwrap() {
-        trace!("Found interface: {}.", iface.name);
-        if iface.name == "docker0" {
-            docker0_if_exist = true;
-            docker0_ip = iface.ip().to_string();
-            break;
-        }
-    }
 
     let vol = match env::var("DOCKER_HOST") {
         Ok(val) => {
@@ -46,12 +50,15 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
             } else if val.starts_with("tcp://") {
                 warn!("Docker socket with TCP schema was detected. Will use DOCKER_HOST={val} to access docker socket inside container.");
                 format!(r#"-e DOCKER_HOST="{val}""#)
-            } else if val.starts_with(&docker0_ip) {
-                if !docker0_if_exist {
-                    warn!("Interface 'docker0' was not found but docker socket with TCP schema was detected. Will use default docker network 172.17.0.1.");
-                }
-                warn!("IP address was detected. Will use DOCKER_HOST=tcp://{docker0_ip} to access docker socket inside container.");
-                format!(r#"-e DOCKER_HOST="tcp://{docker0_ip}""#)
+            } else if match val.parse::<Ipv4Addr>() {
+                Ok(_sock) => true,
+                _ => false,
+            } || match val.parse::<SocketAddrV4>() {
+                Ok(_sock) => true,
+                _ => false,
+            } {
+                warn!("IP address was detected. Will use DOCKER_HOST=tcp://{val} to access docker socket inside container.");
+                format!(r#"-e DOCKER_HOST="tcp://{val}""#)
             } else {
                 warn!("Docker socket: {} with unknown schema was detected.", val);
                 format!(
@@ -63,7 +70,8 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     };
 
     let mut w_prefix = format!(
-        r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:latest  {cmd}"#
+        r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --network=host -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:{}  {cmd}"#,
+        get_version()
     );
 
     // we speed up calls if we already running inside of a container!
@@ -197,7 +205,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             let (code, stdout, stderr) = scone!("scone session check {}", &filename);
             if code != 0 {
                 error!(
-                    "Session {}: description in '{}' contains errors: {}",
+                    "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
                     &filename, name, stderr
                 );
                 // let _ = fs::remove_file(&filename);
@@ -213,7 +221,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 r = Ok(stdout);
             } else {
                 info!(
-                    "Creation of session {} failed: {} - see file {}",
+                    "Creation of session {} failed (Error 2323-49929-90239): {} - see file {}",
                     name, stderr, &filename
                 );
                 r = Err("failed to create session. (Error 8583-25322-21167)")
@@ -358,7 +366,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     let (code, stdout, stderr) = scone!("scone session check {}", &filename);
     if code != 0 {
         error!(
-            "Session {}: description in '{}' contains errors: {}",
+            "Session {}: description in '{}' contains errors (Error 239-20932-9128): {}",
             &filename, name, stderr
         );
         // let _ = fs::remove_file(&filename);
@@ -566,7 +574,7 @@ pub fn check_mrenclave<'a, T: Serialize + for<'de> Deserialize<'de>>(
 
     if j[mrenclave] == "" || force {
         let (code, stdout, stderr) = sh!(
-            r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+            r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --network=host --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
             j[image],
             j[binary]
         );
@@ -598,7 +606,7 @@ pub fn determine_mrenclave(
     let mut j: Value = to_json_value(&state);
 
     let (code, stdout, stderr) = sh!(
-        r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+        r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --network=host --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
         j[image],
         j[binary]
     );
