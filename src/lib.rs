@@ -385,7 +385,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     let (code, _stdout, stderr) = scone!("scone session sign {filename} > {session_json}");
     if code == 0 {
         info!("Created session {name}: '{stderr}'");
-        let _ = fs::remove_file(&filename);
+        // todo: let _ = fs::remove_file(&filename);
         let (code, stdout, _stderr) =
             scone!("scone session calculate-hash {tmp_session_dir}/signed_{out_fname}.json");
         if code == 0 {
@@ -402,7 +402,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         info!("Signing of session {name} failed: {stderr} - see file {filename} (32923-49430-2382389)");
         return Err("failed to sign session. (Error 5540-3086-16296)");
     }
-    let _ = fs::remove_file(&filename);
+    // todo: let _ = fs::remove_file(&filename);
 
     // try to encrypt the session -- need CAS key
     let encrypted_session_json = format!("{tmp_session_dir}/encrypted_{out_fname}.json");
@@ -446,6 +446,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     let signed_session_manifest = format!("{tmp_session_dir}/signed_manifest_{out_fname}.yaml");
     let policy_content = &policy["session"];
     let signature = &policy["signatures"][0]["signature"];
+    let signer_of_sig = &policy["signatures"][0]["signer"];
     let manifest_template = format!(
         r#"
 apiVersion: cas.scone.cloud/v1beta1
@@ -459,7 +460,7 @@ spec:
   casAddress: https://{scone_cas_addr}:8081
   policy: {policy_content}
   signatures:
-    - signer: {signer}
+    - signer: {signer_of_sig} # signer: {signer}
       signature: {signature}
 "#
     );
