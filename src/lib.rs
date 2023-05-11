@@ -1,5 +1,5 @@
-use handlebars::Handlebars;
 use handlebars::JsonValue;
+use handlebars::{no_escape, Handlebars};
 use log::{error, info, warn};
 use once_cell::sync::OnceCell;
 use rand::distributions::Alphanumeric;
@@ -189,9 +189,10 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         if do_create {
             let mut reg = Handlebars::new();
             reg.set_strict_mode(true);
+            reg.register_escape_fn(no_escape);
             let filename = format!("{tmp_session_dir}/{}", random_name(20));
             {
-                let f = OpenOptions::new()
+                let mut f = OpenOptions::new()
                     .write(true)
                     .truncate(true)
                     .create(true)
@@ -199,8 +200,11 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                     .expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
                 info!("session template={template}");
                 // create session from session template and check if correct
-                reg.render_template_to_write(template, &j, f)
+                let out = reg
+                    .render_template(template, &j)
                     .expect("error rendering template (Error 5164-11338-3399)");
+                f.write(out.as_bytes())
+                    .expect("Unable to write file '{filename}' (Error 232-434-272387)");
             }
             let (code, stdout, stderr) = scone!("scone session check {}", &filename);
             if code != 0 {
@@ -282,8 +286,9 @@ pub fn get_signer() -> String {
 
     let (code, stdout, stderr) = scone!("scone self show-session-signing-key");
     if code == 0 {
-        info!("creator signing identity:  {stdout}");
-        stdout
+        let ret = stdout.replace("\n", "\\n");
+        info!("creator signing identity (rc.22):  {ret}");
+        ret
     } else {
         error!(
             "Error determining the creator signing identity:\nstdout:\n{stdout}\nstderr:\n{stderr}"
@@ -340,7 +345,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     }
     let signer = get_signer();
     let creator = get_creator();
-    let session_creator = format!("signer: {signer}");
+    let session_creator = format!(r#"signer: "{signer}""#);
     j["CREATOR"] = serde_json::Value::String(creator);
     j["RANDOM"] = random_name(20).into();
     j["SIGNER"] = serde_json::Value::String(signer.clone());
@@ -348,10 +353,11 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     j["session_creator"] = serde_json::Value::String(session_creator); // we always sign sessions: hence, the creator is the signer
     let mut reg = Handlebars::new();
     reg.set_strict_mode(true);
+    reg.register_escape_fn(no_escape);
     let filename = format!("{tmp_session_dir}/{}", random_name(20));
 
     {
-        let f = OpenOptions::new()
+        let mut f = OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
@@ -359,14 +365,17 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             .expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
         info!("session template={template}");
         // create session from session template and check if correct
-        reg.render_template_to_write(template, &j, f)
+        let out = reg
+            .render_template(template, &j)
             .expect("error rendering template (Error 5134-30338-3378)");
+        f.write(out.as_bytes())
+            .expect("Unable to write file '{filename}' (Error 2323-442-422)");
     }
 
     let (code, stdout, stderr) = scone!("scone session check {}", &filename);
     if code != 0 {
         error!(
-            "Session {}: description in '{}' contains errors (Error 239-20932-9128): {}",
+            "Session {}: description in '{}' contains errors (Error 289-2193-9128): {}",
             &filename, name, stderr
         );
         // let _ = fs::remove_file(&filename);
