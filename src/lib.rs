@@ -70,13 +70,13 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     };
 
     let mut w_prefix = format!(
-        r#"docker run --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" --network=host -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:{}  {cmd}"#,
+        r#"docker run --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" --network=host -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:{}  {cmd}"#,
         get_version()
     );
 
     // we speed up calls if we already running inside of a container!
     if is_running_in_container() {
-        w_prefix = cmd.to_string();
+        w_prefix = format!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}");
     }
     let mut command = {
         let mut command = ::std::process::Command::new(shell);
