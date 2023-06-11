@@ -394,7 +394,6 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     let (code, _stdout, stderr) = scone!("scone session sign {filename} > {session_json}");
     if code == 0 {
         info!("Created session {name}: '{stderr}'");
-        // todo: let _ = fs::remove_file(&filename);
         let (code, stdout, _stderr) =
             scone!("scone session calculate-hash {tmp_session_dir}/signed_{out_fname}.json");
         if code == 0 {
@@ -411,7 +410,6 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         info!("Signing of session {name} failed: {stderr} - see file {filename} (32923-49430-2382389)");
         return Err("failed to sign session. (Error 5540-3086-16296)");
     }
-    // todo: let _ = fs::remove_file(&filename);
 
     // try to encrypt the session -- need CAS key
     let encrypted_session_json = format!("{tmp_session_dir}/encrypted_{out_fname}.json");
@@ -469,7 +467,7 @@ spec:
   casAddress: https://{scone_cas_addr}:8081
   policy: {policy_content}
   signatures:
-    - signer: {signer_of_sig} # signer: {signer}
+    - signer: {signer_of_sig}
       signature: {signature}
 "#
     );
@@ -548,7 +546,7 @@ spec:
         if code == 0 {
             info!("Created signed session {name} with kubectl: {stdout}");
         } else {
-            info!("ERROR: Creation of signed session {name} failed: {stderr} - see file {signed_session_manifest}");
+            info!("ERROR: Creation of signed session {name} failed: {stderr} - see file {signed_session_manifest}. Do you have the credentials to upload the manifest?");
             return_value = Err("failed to create session. (Error 11902-13469-3222)")
         }
     }
