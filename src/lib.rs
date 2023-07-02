@@ -25,7 +25,7 @@ pub fn is_running_in_container() -> bool {
 static VERSION: OnceCell<Mutex<String>> = OnceCell::new();
 
 fn ensure_version() -> &'static Mutex<String> {
-    VERSION.get_or_init(|| Mutex::new(format!("latest")))
+    VERSION.get_or_init(|| Mutex::new("latest".to_string()))
 }
 
 pub fn set_version(version: String) {
@@ -61,9 +61,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
                 format!(r#"-e DOCKER_HOST="tcp://{val}""#)
             } else {
                 warn!("Docker socket: {} with unknown schema was detected.", val);
-                format!(
-                    r#"-e DOCKER_HOST=/var/run/docker.sock -v /var/run/docker.sock:/var/run/docker.sock"#
-                )
+                r#"-e DOCKER_HOST=/var/run/docker.sock -v /var/run/docker.sock:/var/run/docker.sock"#.to_string()
             }
         }
         Err(_e) => "-v /var/run/docker.sock:/var/run/docker.sock".to_string(),
@@ -286,7 +284,7 @@ pub fn get_signer() -> String {
 
     let (code, stdout, stderr) = scone!("scone self show-session-signing-key");
     if code == 0 {
-        let ret = stdout.replace("\n", "\\n");
+        let ret = stdout.replace('\n', "\\n");
         info!("creator signing identity (rc.22):  {ret}");
         ret
     } else {
@@ -348,7 +346,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     let session_creator = format!(r#"signer: "{signer}""#);
     j["CREATOR"] = serde_json::Value::String(creator);
     j["RANDOM"] = random_name(20).into();
-    j["SIGNER"] = serde_json::Value::String(signer.clone());
+    j["SIGNER"] = serde_json::Value::String(signer);
     j["SESSION_CREATOR"] = serde_json::Value::String(session_creator.clone()); // we always sign sessions: hence, the creator is the signer
     j["session_creator"] = serde_json::Value::String(session_creator); // we always sign sessions: hence, the creator is the signer
     let mut reg = Handlebars::new();
