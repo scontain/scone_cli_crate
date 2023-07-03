@@ -51,7 +51,8 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
                 warn!("Docker socket with TCP schema was detected. Will use DOCKER_HOST={val} to access docker socket inside container.");
                 format!(r#"-e DOCKER_HOST="{val}""#)
             } else if matches!(val.parse::<Ipv4Addr>(), Ok(_sock))
-            || matches!(val.parse::<SocketAddrV4>(), Ok(_sock)) {
+                || matches!(val.parse::<SocketAddrV4>(), Ok(_sock))
+            {
                 warn!("IP address was detected. Will use DOCKER_HOST=tcp://{val} to access docker socket inside container.");
                 format!(r#"-e DOCKER_HOST="tcp://{val}""#)
             } else {
