@@ -7,6 +7,7 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shells::sh;
+use signpolicy::{sign_policy_w, PolicyConfig, SignPolicyArgs};
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
@@ -241,7 +242,7 @@ pub enum PolicyHandling {
     )]
     Upload,
     #[opg(
-        "We upload the signed manifest with `kubectl create`",
+        "We upload the signed manifest with `scone session create`",
         example = "Sign"
     )]
     SignedManifest,
@@ -260,6 +261,11 @@ pub enum PolicyHandling {
         example = "EncryptedManifest"
     )]
     EncryptedOnly,
+    #[opg(
+        "We sign the session online. The governors will see the session. The configuration for signing the configuration is defined by command line arguments.",
+        example = "SignOnline"
+    )]
+    SignOnline,
 }
 
 pub fn get_creator() -> String {
@@ -301,6 +307,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     scone_cas_addr: &str,
     weight: i64,
     target_dir: &String,
+    (pc, pa): (Option<PolicyConfig>, Option<SignPolicyArgs>),
 ) -> Result<String, &'static str> {
     // if we already know the hash of the session, we do not try to create
     // unless we set flag force
@@ -380,10 +387,53 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         name, stdout
     );
 
+    let mut return_value;
+
+    //
+    // check if we need to sign and upload the session to CAS directly
+    // for now, we do not sign these session since they are very unreadable
+    // When the website can display the session in a nicer way and verify signatures
+    // we will first sign the session and the let it sign by the governors
+    //
+    if mode == PolicyHandling::SignOnline {
+        let mut pc = if let Some(pc) = pc {
+            pc
+        } else {
+            return Err(
+                "SignOnline: requires PolicyConfig (internal error) (Error 1829-61267-1271287)",
+            );
+        };
+        let pa = if let Some(pa) = pa {
+            pa
+        } else {
+            return Err(
+                "SignOnline: requires PolicyArgs (internal error) (Error 7812-59127-90812)",
+            );
+        };
+        // we need to define some entries that are not yet set
+        let policy = if let Ok(policy) = fs::read_to_string(filename.as_str()) {
+            policy
+        } else {
+            return Err("Failed to read policy from file {filename} (Error 9812-1627-091512)");
+        };
+        pc.policy = policy;
+        pc.policyname = out_fname.to_string();
+        let res = sign_policy_w(&pc, &pa);
+        if res.code == 200 {
+            info!("Created session {}", pc.policyname);
+            return Ok(res.message);
+        } else {
+            info!(
+                "ERROR: Creation of session {} failed: {res:?} - see file {filename}",
+                pc.policyname
+            );
+            return Err("failed to create session. (Error 238923-23327-2277)");
+        }
+    }
+
     use std::fs::File;
 
     // always sign session - no matter what
-    let mut return_value;
     let session_json = format!("{tmp_session_dir}/signed_{out_fname}.json");
     let (code, _stdout, stderr) = scone!("scone session sign {filename} > {session_json}");
     if code == 0 {
