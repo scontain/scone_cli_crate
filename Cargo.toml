@@ -16,4 +16,4 @@ shells = "*"
 opg = "*"
 #get_if_addrs = "0.5.3"
 once_cell = "*"
-signpolicy = { path = "../signpolicy" }
+signpolicy = { version = "*", path = "../signpolicy" }

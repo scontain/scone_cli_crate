@@ -17,6 +17,8 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::Path;
 use std::sync::Mutex;
 
+const DOCKER_NETWORK : &str = ""; // --network=host
+
 pub fn is_running_in_container() -> bool {
     // podman create /run/.containerenv inside containers
     // https://github.com/containers/podman/blob/main/docs/source/markdown/podman-run.1.md.in
@@ -65,7 +67,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     };
 
     let mut w_prefix = format!(
-        r#"docker run --network=host  --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:{}  {cmd}"#,
+        r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:{}  {cmd}"#,
         get_version()
     );
 
@@ -297,6 +299,27 @@ pub fn get_signer() -> String {
     }
 }
 
+// trim &str to at most 63 characters and return as String
+fn take_max_string_slice(s: &str, max_chars: usize) -> String {
+    use std::cmp::min;
+    let len = s.char_indices().count(); // Get the total number of characters
+    let take_up_to = min(len, max_chars); // Determine the number of characters to take
+    s[..take_up_to].to_string() // Slice the string up to the determined character index
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_take_max_string_slice() {
+        use super::take_max_string_slice;
+        let s1 = "1234567890";
+        assert_eq!(take_max_string_slice(s1, 8), &s1[..8]);
+        assert_eq!(take_max_string_slice(s1, 12), s1);
+        assert_eq!(take_max_string_slice(s1, 3), &s1[..3]);
+        assert_eq!(take_max_string_slice(s1, 10), s1);
+    }
+}
+
 pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     name: &str,
     _hash: &str,
@@ -322,7 +345,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         ),
         ".",
         "-",
-    );
+    ).to_lowercase();
     let out_fname = binding.trim_matches('"');
     let predecessor_fname = format!("{tmp_session_dir}/signed_{out_fname}.predecessor");
 
@@ -417,7 +440,8 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             return Err("Failed to read policy from file {filename} (Error 9812-1627-091512)");
         };
         pc.policy = policy;
-        pc.policyname = out_fname.to_string();
+        pc.policyname = take_max_string_slice(out_fname, 63);
+    
         let res = sign_policy_w(&pc, &pa);
         if res.code == 200 {
             info!("Created session {}", pc.policyname);
@@ -626,7 +650,7 @@ pub fn check_mrenclave<'a, T: Serialize + for<'de> Deserialize<'de>>(
 
     if j[mrenclave] == "" || force {
         let (code, stdout, stderr) = sh!(
-            r#"docker run --network=host  --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+            r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
             j[image],
             j[binary]
         );
@@ -658,7 +682,7 @@ pub fn determine_mrenclave(
     let mut j: Value = to_json_value(&state);
 
     let (code, stdout, stderr) = sh!(
-        r#"docker run --network=host  --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+        r#"docker run {DOCKER_NETWORK}  --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
         j[image],
         j[binary]
     );
