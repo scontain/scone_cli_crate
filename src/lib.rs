@@ -2,8 +2,8 @@ use handlebars::JsonValue;
 use handlebars::{no_escape, Handlebars};
 use log::{error, info, warn};
 use once_cell::sync::OnceCell;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::distr::Alphanumeric;
+use rand::{rng, Rng};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shells::sh;
@@ -728,7 +728,7 @@ pub fn read_state<T: Init + for<'de> Deserialize<'de>>(filename: &str) -> T {
 }
 
 pub fn random_name(len: usize) -> String {
-    let rand_string: String = thread_rng()
+    let rand_string: String = rng()
         .sample_iter(&Alphanumeric)
         .take(len)
         .map(char::from)
