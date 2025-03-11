@@ -67,7 +67,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     };
 
     let mut w_prefix = format!(
-        r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/root/.docker" -v "$HOME/.cas:/root/.cas" -v "$HOME/.scone:/root/.scone" -v "$PWD:/wd" -w /wd  {repo}/sconecli:{}  {cmd}"#,
+        r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/home/root/.docker" -v "$HOME/.cas:/home/root/.cas" -v "$HOME/.scone:/home/root/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{}  {cmd}"#,
         get_version()
     );
 
@@ -362,7 +362,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             j["predecessor"] = serde_json::Value::String(content);
         }
         Err(err) => {
-            info!("Did not find the predecessor for {predecessor_fname}: Error {err} ");
+            error!("Did not find the predecessor for {predecessor_fname}: Error {err} ");
             // otherwise: assume that this is a new policy to write
             j["predecessor"] = "~".into();
         }
@@ -387,7 +387,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             .create(true)
             .open(&filename)
             .expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
-        info!("session template={template}");
+            info!("session template={template}");
         // create session from session template and check if correct
         let out = reg
             .render_template(template, &j)
@@ -447,8 +447,8 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             info!("Created session {}", pc.policyname);
             return Ok(res.message);
         } else {
-            info!(
-                "ERROR: Creation of session {} failed: {res:?} - see file {filename}",
+            error!(
+                "ERROR: Creation of session {} failed: {res:?} - see file {filename} (Error 238923-23327-2277)",
                 pc.policyname
             );
             return Err("failed to create session. (Error 238923-23327-2277)");
@@ -475,7 +475,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             return Err("failed to determine session hash. (Error 1078-16432-19559)");
         }
     } else {
-        info!("Signing of session {name} failed: {stderr} - see file {filename} (32923-49430-2382389)");
+        error!("Signing of session {name} failed: {stderr} - see file {filename} (32923-49430-2382389)");
         return Err("failed to sign session. (Error 5540-3086-16296)");
     }
 
@@ -489,7 +489,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 "Created encrypted session {name} --key {key} - {encrypted_session_json}: {stdout}"
             );
         } else {
-            info!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json}");
+            error!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json} (Error 29926-22481-2946)");
             return Err("failed to encrypt session. (Error 29926-22481-2946)");
         }
     } else {
@@ -500,7 +500,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         if code == 0 {
             info!("Created encrypted session {name} - {encrypted_session_json}: {stdout}");
         } else {
-            info!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json}");
+            error!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json} (Error 29926-22481-23832)");
             return Err("failed to encrypt session. (Error 29926-22481-23832)");
         }
     }
@@ -510,11 +510,11 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         if let Ok(policy) = serde_json::from_str(&content) {
             policy
         } else {
-            info!("Failed to parse signed session {name} from file {session_json}");
+            error!("Failed to parse signed session {name} from file {session_json} (Error 24175-5973-18109)");
             return Err("failed to read signed session. (Error 24175-5973-18109)");
         }
     } else {
-        info!("Failed to read signed session {name} from file {session_json}");
+        error!("Failed to read signed session {name} from file {session_json} (Error 25390-21169-31176)");
         return Err("failed to read signed session. (Error 25390-21169-31176)");
     };
 
@@ -551,11 +551,11 @@ spec:
         if let Ok(policy) = serde_json::from_str(&content) {
             policy
         } else {
-            info!("Failed to parse encrypted session {name} from file {encrypted_session_json}");
+            error!("Failed to parse encrypted session {name} from file {encrypted_session_json} (Error 24175-5973-18210)");
             return Err("failed to read signed session. (Error 24175-5973-18210)");
         }
     } else {
-        info!("Failed to read encrypted session {name} from file {encrypted_session_json}");
+        error!("Failed to read encrypted session {name} from file {encrypted_session_json}  (Error 25390-21169-31286)");
         return Err("failed to read signed session. (Error 25390-21169-31286)");
     };
 
@@ -603,18 +603,18 @@ spec:
         if code == 0 {
             info!("Created session {name}: {stdout}");
         } else {
-            info!("ERROR: Creation of session {name} failed: {stderr} - see file {session_json}");
+            error!("ERROR: Creation of session {name} failed: {stderr} - see file {session_json} (Error 11902-13469-3222)");
             return_value = Err("failed to create session. (Error 11902-13469-3222)")
         }
     }
 
     // check if we need to upload the session to CAS directly
     if mode == PolicyHandling::SignedManifest {
-        let (code, stdout, stderr) = local!("kubectl apply -f {signed_session_manifest}");
+        let (code, stdout, stderr) = sh!("kubectl apply -f {signed_session_manifest}");
         if code == 0 {
             info!("Created signed session {name} with kubectl: {stdout}");
         } else {
-            info!("ERROR: Creation of signed session {name} failed: {stderr} - see file {signed_session_manifest}. Do you have the credentials to upload the manifest?");
+            error!("ERROR: Creation of signed session {name} failed: {stderr} - see file {signed_session_manifest}. Do you have the credentials to upload the manifest (Error 11902-13469-3221) ?");
             return_value = Err("failed to create session. (Error 11902-13469-3222)")
         }
     }
@@ -650,7 +650,7 @@ pub fn check_mrenclave<'a, T: Serialize + for<'de> Deserialize<'de>>(
 
     if j[mrenclave] == "" || force {
         let (code, stdout, stderr) = sh!(
-            r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+            r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)  --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
             j[image],
             j[binary]
         );
@@ -682,7 +682,7 @@ pub fn determine_mrenclave(
     let mut j: Value = to_json_value(&state);
 
     let (code, stdout, stderr) = sh!(
-        r#"docker run {DOCKER_NETWORK}  --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
+        r#"docker run {DOCKER_NETWORK}  --platform linux/amd64 -e SCONE_PRODUCTION=0 -e SCONE_NO_TIME_THREAD=1 --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)  --entrypoint="" --rm -e SCONE_HASH=1 {} {} | tr -d '[:space:]'"#,
         j[image],
         j[binary]
     );
