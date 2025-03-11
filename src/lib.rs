@@ -200,7 +200,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 let out = reg
                     .render_template(template, &j)
                     .expect("error rendering template (Error 5164-11338-3399)");
-                f.write(out.as_bytes())
+                f.write_all(out.as_bytes())
                     .expect("Unable to write file '{filename}' (Error 232-434-272387)");
             }
             let (code, stdout, stderr) = scone!("scone session check {}", &filename);
@@ -307,19 +307,7 @@ fn take_max_string_slice(s: &str, max_chars: usize) -> String {
     s[..take_up_to].to_string() // Slice the string up to the determined character index
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_take_max_string_slice() {
-        use super::take_max_string_slice;
-        let s1 = "1234567890";
-        assert_eq!(take_max_string_slice(s1, 8), &s1[..8]);
-        assert_eq!(take_max_string_slice(s1, 12), s1);
-        assert_eq!(take_max_string_slice(s1, 3), &s1[..3]);
-        assert_eq!(take_max_string_slice(s1, 10), s1);
-    }
-}
-
+#[allow(clippy::too_many_arguments)]
 pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     name: &str,
     _hash: &str,
@@ -392,7 +380,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         let out = reg
             .render_template(template, &j)
             .expect("error rendering template (Error 5134-30338-3378)");
-        f.write(out.as_bytes())
+        f.write_all(out.as_bytes())
             .expect("Unable to write file '{filename}' (Error 2323-442-422)");
     }
 
@@ -758,5 +746,18 @@ pub fn get_otp(otp: Option<String>) -> String {
             .expect("Error getting OTP (Error 30189-22111-13542)");
         otp.retain(|c| !c.is_whitespace());
         otp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_take_max_string_slice() {
+        use super::take_max_string_slice;
+        let s1 = "1234567890";
+        assert_eq!(take_max_string_slice(s1, 8), &s1[..8]);
+        assert_eq!(take_max_string_slice(s1, 12), s1);
+        assert_eq!(take_max_string_slice(s1, 3), &s1[..3]);
+        assert_eq!(take_max_string_slice(s1, 10), s1);
     }
 }
