@@ -1,13 +1,13 @@
 use handlebars::JsonValue;
-use handlebars::{no_escape, Handlebars};
+use handlebars::{Handlebars, no_escape};
 use log::{error, info, warn};
 use once_cell::sync::OnceCell;
 use rand::distr::Alphanumeric;
-use rand::{rng, Rng};
+use rand::{Rng, rng};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shells::sh;
-use signpolicy::{sign_policy_w, PolicyConfig, SignPolicyArgs};
+use signpolicy::{PolicyConfig, SignPolicyArgs, sign_policy_w};
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
@@ -17,7 +17,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::Path;
 use std::sync::Mutex;
 
-const DOCKER_NETWORK : &str = ""; // --network=host
+const DOCKER_NETWORK: &str = ""; // --network=host
 
 pub fn is_running_in_container() -> bool {
     // podman create /run/.containerenv inside containers
@@ -51,12 +51,16 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
                 let vol = val.strip_prefix("unix://").unwrap_or(&val).to_string();
                 format!(r#"-e DOCKER_HOST="{val}" -v "{vol}":"{vol}""#)
             } else if val.starts_with("tcp://") {
-                warn!("Docker socket with TCP schema was detected. Will use DOCKER_HOST={val} to access docker socket inside container.");
+                warn!(
+                    "Docker socket with TCP schema was detected. Will use DOCKER_HOST={val} to access docker socket inside container."
+                );
                 format!(r#"-e DOCKER_HOST="{val}""#)
             } else if matches!(val.parse::<Ipv4Addr>(), Ok(_sock))
                 || matches!(val.parse::<SocketAddrV4>(), Ok(_sock))
             {
-                warn!("IP address was detected. Will use DOCKER_HOST=tcp://{val} to access docker socket inside container.");
+                warn!(
+                    "IP address was detected. Will use DOCKER_HOST=tcp://{val} to access docker socket inside container."
+                );
                 format!(r#"-e DOCKER_HOST="tcp://{val}""#)
             } else {
                 warn!("Docker socket: {} with unknown schema was detected.", val);
@@ -210,7 +214,9 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                     &filename, name, stderr
                 );
                 // let _ = fs::remove_file(&filename);
-                return Err("Session template seems to be incorrect - have a look at file. (Error 32608-18428-12247)");
+                return Err(
+                    "Session template seems to be incorrect - have a look at file. (Error 32608-18428-12247)",
+                );
             }
             info!("Session template for {}: is correct: {}", name, stdout);
 
@@ -333,7 +339,8 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         ),
         ".",
         "-",
-    ).to_lowercase();
+    )
+    .to_lowercase();
     let out_fname = binding.trim_matches('"');
     let predecessor_fname = format!("{tmp_session_dir}/signed_{out_fname}.predecessor");
 
@@ -375,7 +382,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             .create(true)
             .open(&filename)
             .expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
-            info!("session template={template}");
+        info!("session template={template}");
         // create session from session template and check if correct
         let out = reg
             .render_template(template, &j)
@@ -391,7 +398,9 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             &filename, name, stderr
         );
         // let _ = fs::remove_file(&filename);
-        return Err("Session template seems to be incorrect - have a look at file. (Error 18583-11027-29850)");
+        return Err(
+            "Session template seems to be incorrect - have a look at file. (Error 18583-11027-29850)",
+        );
     }
     info!(
         "Session template for session {}: is correct: {}",
@@ -429,7 +438,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         };
         pc.policy = policy;
         pc.policyname = take_max_string_slice(out_fname, 63);
-    
+
         let res = sign_policy_w(&pc, &pa);
         if res.code == 200 {
             info!("Created session {}", pc.policyname);
@@ -463,7 +472,9 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             return Err("failed to determine session hash. (Error 1078-16432-19559)");
         }
     } else {
-        error!("Signing of session {name} failed: {stderr} - see file {filename} (32923-49430-2382389)");
+        error!(
+            "Signing of session {name} failed: {stderr} - see file {filename} (32923-49430-2382389)"
+        );
         return Err("failed to sign session. (Error 5540-3086-16296)");
     }
 
@@ -477,7 +488,9 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 "Created encrypted session {name} --key {key} - {encrypted_session_json}: {stdout}"
             );
         } else {
-            error!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json} (Error 29926-22481-2946)");
+            error!(
+                "Failed to create encrypted session {name} failed: {stderr} - see file {session_json} (Error 29926-22481-2946)"
+            );
             return Err("failed to encrypt session. (Error 29926-22481-2946)");
         }
     } else {
@@ -488,7 +501,9 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         if code == 0 {
             info!("Created encrypted session {name} - {encrypted_session_json}: {stdout}");
         } else {
-            error!("Failed to create encrypted session {name} failed: {stderr} - see file {session_json} (Error 29926-22481-23832)");
+            error!(
+                "Failed to create encrypted session {name} failed: {stderr} - see file {session_json} (Error 29926-22481-23832)"
+            );
             return Err("failed to encrypt session. (Error 29926-22481-23832)");
         }
     }
@@ -498,11 +513,15 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         if let Ok(policy) = serde_json::from_str(&content) {
             policy
         } else {
-            error!("Failed to parse signed session {name} from file {session_json} (Error 24175-5973-18109)");
+            error!(
+                "Failed to parse signed session {name} from file {session_json} (Error 24175-5973-18109)"
+            );
             return Err("failed to read signed session. (Error 24175-5973-18109)");
         }
     } else {
-        error!("Failed to read signed session {name} from file {session_json} (Error 25390-21169-31176)");
+        error!(
+            "Failed to read signed session {name} from file {session_json} (Error 25390-21169-31176)"
+        );
         return Err("failed to read signed session. (Error 25390-21169-31176)");
     };
 
@@ -539,11 +558,15 @@ spec:
         if let Ok(policy) = serde_json::from_str(&content) {
             policy
         } else {
-            error!("Failed to parse encrypted session {name} from file {encrypted_session_json} (Error 24175-5973-18210)");
+            error!(
+                "Failed to parse encrypted session {name} from file {encrypted_session_json} (Error 24175-5973-18210)"
+            );
             return Err("failed to read signed session. (Error 24175-5973-18210)");
         }
     } else {
-        error!("Failed to read encrypted session {name} from file {encrypted_session_json}  (Error 25390-21169-31286)");
+        error!(
+            "Failed to read encrypted session {name} from file {encrypted_session_json}  (Error 25390-21169-31286)"
+        );
         return Err("failed to read signed session. (Error 25390-21169-31286)");
     };
 
@@ -591,7 +614,9 @@ spec:
         if code == 0 {
             info!("Created session {name}: {stdout}");
         } else {
-            error!("ERROR: Creation of session {name} failed: {stderr} - see file {session_json} (Error 11902-13469-3222)");
+            error!(
+                "ERROR: Creation of session {name} failed: {stderr} - see file {session_json} (Error 11902-13469-3222)"
+            );
             return_value = Err("failed to create session. (Error 11902-13469-3222)")
         }
     }
@@ -602,7 +627,9 @@ spec:
         if code == 0 {
             info!("Created signed session {name} with kubectl: {stdout}");
         } else {
-            error!("ERROR: Creation of signed session {name} failed: {stderr} - see file {signed_session_manifest}. Do you have the credentials to upload the manifest (Error 11902-13469-3221) ?");
+            error!(
+                "ERROR: Creation of signed session {name} failed: {stderr} - see file {signed_session_manifest}. Do you have the credentials to upload the manifest (Error 11902-13469-3221) ?"
+            );
             return_value = Err("failed to create session. (Error 11902-13469-3222)")
         }
     }
