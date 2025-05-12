@@ -71,7 +71,7 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     };
 
     let mut w_prefix = format!(
-        r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "$HOME/.docker:/home/root/.docker" -v "$HOME/.cas:/home/root/.cas" -v "$HOME/.scone:/home/root/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{}  {cmd}"#,
+        r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "~/.docker:/home/root/.docker" -v "~/.cas:/home/nonroot/.cas" -v "~/.scone:/home/nonroot/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{}  {cmd}"#,
         get_version()
     );
 
