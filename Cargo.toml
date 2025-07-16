@@ -17,4 +17,4 @@ shells = "*"
 opg = "*"
 #get_if_addrs = "0.5.3"
 once_cell = "*"
-signpolicy = { version = "*", git = "ssh://git@github.com/scontain/signpolicy" }
+signpolicy = { version = "*", git = "https://github.com/scontain/signpolicy.git" }
