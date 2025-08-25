@@ -188,6 +188,7 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
             let _ = fs::remove_file(tmp_name);
             if code == 0 {
                 info!("OK: verified  session {}: predecessor='{}'", name, stdout);
+                j["predecessor_key"] = "predecessor".into();
                 j["predecessor"] = stdout.clone().into();
             } else {
                 error!("Error verifying session {}: {} {}", name, stdout, stderr);
@@ -201,6 +202,7 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 "Reading of session {} failed! Trying to create session. {} {}",
                 name, stdout, stderr
             );
+            j["predecessor_key"] = "# predecessor".into();
             j["predecessor"] = "~".into();
         };
         if do_create {
@@ -370,11 +372,13 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     match fs::read_to_string(&predecessor_fname) {
         Ok(content) => {
             info!("Found predecessor {predecessor_fname} {content}");
+            j["predecessor_key"] = "predecessor".into();
             j["predecessor"] = serde_json::Value::String(content);
         }
         Err(err) => {
             error!("Did not find the predecessor for {predecessor_fname}: Error {err} ");
             // otherwise: assume that this is a new policy to write
+            j["predecessor_key"] = "# predecessor".into();
             j["predecessor"] = "~".into();
         }
     }
