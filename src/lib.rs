@@ -144,9 +144,25 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     force: bool,
     target_dir: &String,
 ) -> Result<String, &'static str> {
+    create_session_with_config(name, hash, template, state, force, target_dir, None)
+}
+
+pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
+    name: &str,
+    hash: &str,
+    template: &str,
+    state: &T,
+    force: bool,
+    target_dir: &String,
+    config_cli: Option<&str>,
+) -> Result<String, &'static str> {
     // if we already know the hash of the session, we do not try to create
     // unless we set flag force
 
+    let scone_config_cli_env_var = match config_cli {
+        Some(config_cli_file) => format!(r#"SCONE_CONFIG_CLI="{config_cli_file}""#),
+        None => String::new(),
+    };
     let tmp_session_dir = format!("{target_dir}/session_files");
     fs::create_dir_all(&tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
 
@@ -163,12 +179,12 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
         j["RANDOM"] = random_name(20).into(); // define some RANDOM value to ensure that sessions will not have a predictable hash value
 
         let tmp_name = format!("{tmp_session_dir}/{}", random_name(20));
-        let (code, stdout, stderr) = scone!("scone session read {} > {}", name, tmp_name);
+        let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session read {name} > {tmp_name}");
         let mut do_create = force; // create session, if force is set
         let mut r = Err("Incorrect code (Error 20336-4334-9699)");
         if code == 0 {
             info!("Got session {} .. verifying session now ", name);
-            let (code, stdout, stderr) = scone!("scone session verify {}", tmp_name);
+            let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session verify {tmp_name}");
             let _ = fs::remove_file(tmp_name);
             if code == 0 {
                 info!("OK: verified  session {}: predecessor='{}'", name, stdout);
@@ -207,7 +223,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 f.write_all(out.as_bytes())
                     .expect("Unable to write file '{filename}' (Error 232-434-272387)");
             }
-            let (code, stdout, stderr) = scone!("scone session check {}", &filename);
+            let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session check {}", &filename);
             if code != 0 {
                 error!(
                     "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
@@ -221,7 +237,7 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
             info!("Session template for {}: is correct: {}", name, stdout);
 
             // try to create / update the session
-            let (code, stdout, stderr) = scone!("scone session create {}", &filename);
+            let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session create {}", &filename);
             // let _ = fs::remove_file(&filename);
             if code == 0 {
                 info!("Created session {}: {}", name, stdout);
