@@ -70,10 +70,15 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
         Err(_e) => "-v /var/run/docker.sock:/var/run/docker.sock".to_string(),
     };
 
+    // TODO: FIX: Mounting with ~ does not work. It should be absolute paths.
     let mut w_prefix = format!(
         r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "~/.docker:/home/root/.docker" -v "~/.cas:/home/nonroot/.cas" -v "~/.scone:/home/nonroot/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{}  {cmd}"#,
         get_version()
     );
+
+    // TODO: FIX: There are two problems with the following check (if is_running_in_container()):
+    // 1) It returns false, if running in a Kubernetes container.
+    // 2) It should be changed to 'if is_scone_installed()'.
 
     // we speed up calls if we already running inside of a container!
     if is_running_in_container() {
@@ -104,6 +109,16 @@ macro_rules! scone {
     ( $( $cmd:tt )* ) => {{
         $crate::execute_scone_cli("sh", &format!($( $cmd )*))
     }};
+}
+
+// This function is currently necessary, since the provided config path specifies
+// a file path on the local host (as opposed to inside a docker container),
+// and the scone! macro does not handle that case.
+fn execute_scone_with_config(config_cli: Option<&str>, cmd: &str) -> (i32, String, String) {
+    match config_cli {
+        Some(config_file) => local!("SCONE_CONFIG_CLI={config_file} SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}"),
+        None => scone!("{cmd}"),
+    }
 }
 
 pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
@@ -159,10 +174,6 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
     // if we already know the hash of the session, we do not try to create
     // unless we set flag force
 
-    let scone_config_cli_env_var = match config_cli {
-        Some(config_cli_file) => format!(r#"SCONE_CONFIG_CLI="{config_cli_file}""#),
-        None => String::new(),
-    };
     let tmp_session_dir = format!("{target_dir}/session_files");
     fs::create_dir_all(&tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
 
@@ -179,12 +190,12 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
         j["RANDOM"] = random_name(20).into(); // define some RANDOM value to ensure that sessions will not have a predictable hash value
 
         let tmp_name = format!("{tmp_session_dir}/{}", random_name(20));
-        let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session read {name} > {tmp_name}");
+        let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session read {name} > {tmp_name}"));
         let mut do_create = force; // create session, if force is set
         let mut r = Err("Incorrect code (Error 20336-4334-9699)");
         if code == 0 {
             info!("Got session {} .. verifying session now ", name);
-            let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session verify {tmp_name}");
+            let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session verify {tmp_name}"));
             let _ = fs::remove_file(tmp_name);
             if code == 0 {
                 info!("OK: verified  session {}: predecessor='{}'", name, stdout);
@@ -225,7 +236,7 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 f.write_all(out.as_bytes())
                     .expect("Unable to write file '{filename}' (Error 232-434-272387)");
             }
-            let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session check {}", &filename);
+            let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session check {}", &filename));
             if code != 0 {
                 error!(
                     "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
@@ -239,7 +250,7 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
             info!("Session template for {}: is correct: {}", name, stdout);
 
             // try to create / update the session
-            let (code, stdout, stderr) = scone!("{scone_config_cli_env_var} scone session create {}", &filename);
+            let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session create {}", &filename));
             // let _ = fs::remove_file(&filename);
             if code == 0 {
                 info!("Created session {}: {}", name, stdout);
