@@ -159,7 +159,100 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     force: bool,
     target_dir: &String,
 ) -> Result<String, &'static str> {
-    create_session_with_config(name, hash, template, state, force, target_dir, None)
+    // if we already know the hash of the session, we do not try to create
+    // unless we set flag force
+
+    let tmp_session_dir = format!("{target_dir}/session_files");
+    fs::create_dir_all(&tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
+
+    if hash.is_empty() || force {
+        info!("Hash for session {} empty. Trying to determine hash.", name);
+        // we access the state object via a json "proxy" object
+        // - we can access fields without needing to traits... but more importantly, this enables to create session for different fields
+        let mut j: Value = serde_json::from_str(
+            &serde_json::to_string_pretty(&state)
+                .expect("Error serializing internal state (Error 1246-28944-24836)"),
+        )
+        .expect("Error parsing session state (Error 2213-735-18099)");
+        j["CREATOR"] = "CREATOR".into();
+        j["RANDOM"] = random_name(20).into(); // define some RANDOM value to ensure that sessions will not have a predictable hash value
+
+        let tmp_name = format!("{tmp_session_dir}/{}", random_name(20));
+        let (code, stdout, stderr) = scone!("scone session read {} > {}", name, tmp_name);
+        let mut do_create = force; // create session, if force is set
+        let mut r = Err("Incorrect code (Error 20336-4334-9699)");
+        if code == 0 {
+            info!("Got session {} .. verifying session now ", name);
+            let (code, stdout, stderr) = scone!("scone session verify {}", tmp_name);
+            let _ = fs::remove_file(tmp_name);
+            if code == 0 {
+                info!("OK: verified  session {}: predecessor='{}'", name, stdout);
+                j["predecessor"] = stdout.clone().into();
+            } else {
+                error!("Error verifying session {}: {} {}", name, stdout, stderr);
+                return Err("Error reading session. (Error 28030-29956-32283)");
+            }
+            r = Ok(stdout);
+        } else {
+            let _ = fs::remove_file(tmp_name);
+            do_create = true; // create session, if we cannot read session - might not yet exist
+            info!(
+                "Reading of session {} failed! Trying to create session. {} {}",
+                name, stdout, stderr
+            );
+            j["predecessor"] = "~".into();
+        };
+        if do_create {
+            let mut reg = Handlebars::new();
+            reg.set_strict_mode(true);
+            reg.register_escape_fn(no_escape);
+            let filename = format!("{tmp_session_dir}/{}", random_name(20));
+            {
+                let mut f = OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .create(true)
+                    .open(&filename)
+                    .expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
+                info!("session template={template}");
+                // create session from session template and check if correct
+                let out = reg
+                    .render_template(template, &j)
+                    .expect("error rendering template (Error 5164-11338-3399)");
+                f.write_all(out.as_bytes())
+                    .expect("Unable to write file '{filename}' (Error 232-434-272387)");
+            }
+            let (code, stdout, stderr) = scone!("scone session check {}", &filename);
+            if code != 0 {
+                error!(
+                    "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
+                    &filename, name, stderr
+                );
+                // let _ = fs::remove_file(&filename);
+                return Err(
+                    "Session template seems to be incorrect - have a look at file. (Error 32608-18428-12247)",
+                );
+            }
+            info!("Session template for {}: is correct: {}", name, stdout);
+
+            // try to create / update the session
+            let (code, stdout, stderr) = scone!("scone session create {}", &filename);
+            // let _ = fs::remove_file(&filename);
+            if code == 0 {
+                info!("Created session {}: {}", name, stdout);
+                r = Ok(stdout);
+            } else {
+                info!(
+                    "Creation of session {} failed (Error 2323-49929-90239): {} - see file {}",
+                    name, stderr, &filename
+                );
+                r = Err("failed to create session. (Error 8583-25322-21167)")
+            }
+        }
+        r
+    } else {
+        Ok(hash.to_string())
+    }
 }
 
 pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
@@ -254,6 +347,9 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
             // let _ = fs::remove_file(&filename);
             if code == 0 {
                 info!("Created session {}: {}", name, stdout);
+                info!("Created session {name}: file={filename}");
+                // The output of this println is used in ceremony repo
+                println!("{filename}");
                 r = Ok(stdout);
             } else {
                 info!(
