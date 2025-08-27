@@ -1,7 +1,6 @@
 use handlebars::JsonValue;
 use handlebars::{Handlebars, no_escape};
 use log::{error, info, warn};
-use once_cell::sync::OnceCell;
 use rand::distr::Alphanumeric;
 use rand::{Rng, rng};
 use serde::{Deserialize, Serialize};
@@ -15,31 +14,140 @@ use std::io;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::Path;
-use std::sync::Mutex;
+use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 const DOCKER_NETWORK: &str = ""; // --network=host
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellCommand {
+    SpawnServerSconeCli,
+    SpawnServerDocker,
+    SconeCli,
+    Docker,
+    SpawnServer,
+    None,
+}
+
+static SHELL_COMMAND: OnceLock<ShellCommand> = OnceLock::new();
+
+/// Public accessor: lazily computes once, then reuses.
+pub fn shell_command() -> &'static ShellCommand {
+    SHELL_COMMAND.get_or_init(compute_shell_command)
+}
+
+fn compute_shell_command() -> ShellCommand {
+    info!("Determining how to execute the shell commands");
+
+    let (rc, _stdout, _stderr) = spawn_server::sh!("scone --version");
+
+    if rc == 0 {
+        info!("Both spawn_server and scone cli are installed");
+        // scone works via spawn_server
+        return ShellCommand::SpawnServerSconeCli;
+    }
+
+    // -1 means no-one is listening on spawn_server address
+    if rc == -1 {
+        return if local_scone_installed() {
+            info!("scone cli, but not spawn_server, is installed");
+            ShellCommand::SconeCli
+        } else if local_docker_installed() {
+            info!("docker, but neither scone cli nor spawn_server, is installed");
+            ShellCommand::Docker
+        } else {
+            info!("Neither spawn_server, docker, nor scone cli is installed");
+            ShellCommand::None
+        };
+    }
+
+    return if local_docker_installed() {
+        info!("docker and spawn_server, but not scone cli, is installed");
+        ShellCommand::SpawnServerDocker
+    } else {
+        info!("spawn_server, but neither docker nor scone cli, is installed");
+        ShellCommand::SpawnServer
+    };
+}
+
+pub fn local_scone_installed() -> bool {
+    match Command::new("scone").arg("--version").output() {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
+}
+
+pub fn local_docker_installed() -> bool {
+    match Command::new("docker").arg("--version").output() {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
+}
+
+// TODO: deprecate this in favor of local_scone_installed()? Or extend to be true for Kubernetes containers too?
 pub fn is_running_in_container() -> bool {
     // podman create /run/.containerenv inside containers
     // https://github.com/containers/podman/blob/main/docs/source/markdown/podman-run.1.md.in
     Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
 }
 
-static VERSION: OnceCell<Mutex<String>> = OnceCell::new();
+static VERSION: OnceLock<Mutex<String>> = OnceLock::new();
 
 fn ensure_version() -> &'static Mutex<String> {
-    VERSION.get_or_init(|| Mutex::new("latest".to_string()))
+    VERSION.get_or_init(|| Mutex::new(String::from("latest")))
 }
 
-pub fn set_version(version: String) {
-    *ensure_version().lock().unwrap() = version;
+pub fn set_version<S: Into<String>>(version: S) {
+    *ensure_version().lock().unwrap() = version.into();
 }
 
 pub fn get_version() -> String {
-    (*ensure_version().lock().unwrap()).clone()
+    ensure_version().lock().unwrap().clone()
 }
 
+/// Execute a command locally (use `execute_scone_cli` if the command is scone or rust-cli)
+/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding 
+/// the fork. Make sure to use `SCONE_FORK`=1 (or --fork if signed) if `spawn_server` is not used.
+pub fn execute_non_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
+    match *shell_command() {
+        ShellCommand::SpawnServerSconeCli | ShellCommand::SpawnServerDocker | ShellCommand::SpawnServer => spawn_server::sh!("{cmd}"),
+        ShellCommand::Docker | ShellCommand::SconeCli | ShellCommand::None => execute_local(shell, cmd),
+    }
+}
+
+/// Execute a scone or rust-cli command locally (use `execute_non_scone_cli` for other commands)
+///
+/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding 
+/// the fork. Make sure to use `SCONE_FORK`=1 (or --fork if signed), if `spawn_server` is not used.
+/// If `scone` is not installed locally, the command will be executed in a docker container.
+/// If `docker` is not installed either, we bail.
 pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
+    match *shell_command() {
+        ShellCommand::SpawnServerSconeCli => {
+            spawn_server::sh!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}")
+        }
+        ShellCommand::SpawnServerDocker => {
+            spawn_server::sh!("{}", build_docker_command(cmd))
+        }
+        ShellCommand::SconeCli => execute_local(
+            shell,
+            &format!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}"),
+        ),
+        ShellCommand::Docker => {
+            execute_local(shell, &format!("{}", build_docker_command(cmd)))
+        }
+        ShellCommand::SpawnServer | ShellCommand::None => (
+            -3,
+            String::new(),
+            format!(
+                "Failed to execute command '{cmd}': Neither 'scone' nor 'docker' is installed (ERROR 20154-13302-17922)"
+            ),
+        ),
+    }
+}
+
+fn build_docker_command(scone_command: &str) -> String {
     let repo = match env::var("SCONECTL_REPO") {
         Ok(repo) => repo,
         Err(_err) => "registry.scontain.com/sconectl".to_string(),
@@ -70,38 +178,13 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
         Err(_e) => "-v /var/run/docker.sock:/var/run/docker.sock".to_string(),
     };
 
-    // TODO: FIX: Mounting with ~ does not work. It should be absolute paths.
-    let mut w_prefix = format!(
-        r#"docker run {DOCKER_NETWORK} --platform linux/amd64 -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 --entrypoint="" -e "SCONECTL_REPO={repo}" --rm {vol} -v "~/.docker:/home/root/.docker" -v "~/.cas:/home/nonroot/.cas" -v "~/.scone:/home/nonroot/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{}  {cmd}"#,
+    let docker_command = format!(
+        r#"docker run --rm --platform linux/amd64 --add-host=host.docker.internal:host-gateway {DOCKER_NETWORK} -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 -e SCONE_MODE="sim" --entrypoint="" -e "SCONECTL_REPO={repo}" {vol} -v "$HOME/.docker:/home/root/.docker" -v "$HOME/.cas:/home/nonroot/.cas" -v "$HOME/.scone:/home/nonroot/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{} sh -c '{scone_command}'"#,
         get_version()
     );
+    info!("Executing: {docker_command}");
 
-    // TODO: FIX: There are two problems with the following check (if is_running_in_container()):
-    // 1) It returns false, if running in a Kubernetes container.
-    // 2) It should be changed to 'if is_scone_installed()'.
-
-    // we speed up calls if we already running inside of a container!
-    if is_running_in_container() {
-        w_prefix = format!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}");
-    }
-    let mut command = {
-        let mut command = ::std::process::Command::new(shell);
-        command.arg("-c").arg(w_prefix);
-        command
-    };
-
-    match command.output() {
-        Ok(output) => (
-            output
-                .status
-                .code()
-                .unwrap_or(if output.status.success() { 0 } else { 1 }),
-            String::from_utf8_lossy(&output.stdout[..]).into_owned(),
-            String::from_utf8_lossy(&output.stderr[..]).into_owned(),
-        ),
-
-        Err(e) => (126, String::new(), e.to_string()),
-    }
+    docker_command
 }
 
 #[macro_export]
@@ -109,16 +192,6 @@ macro_rules! scone {
     ( $( $cmd:tt )* ) => {{
         $crate::execute_scone_cli("sh", &format!($( $cmd )*))
     }};
-}
-
-// This function is currently necessary, since the provided config path specifies
-// a file path on the local host (as opposed to inside a docker container),
-// and the scone! macro does not handle that case.
-fn execute_scone_with_config(config_cli: Option<&str>, cmd: &str) -> (i32, String, String) {
-    match config_cli {
-        Some(config_file) => local!("SCONE_CLI_CONFIG={config_file} SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}"),
-        None => scone!("{cmd}"),
-    }
 }
 
 pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
@@ -147,10 +220,13 @@ pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
 #[macro_export]
 macro_rules! local {
     ( $( $cmd:tt )* ) => {{
-        $crate::execute_local("sh", &format!($( $cmd )*))
+        $crate::execute_non_scone_cli("sh", &format!($( $cmd )*))
     }};
 }
 
+/// Create CAS session
+/// 
+/// (see `create_session_with_config`)
 pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     name: &str,
     hash: &str,
@@ -159,102 +235,23 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     force: bool,
     target_dir: &String,
 ) -> Result<String, &'static str> {
-    // if we already know the hash of the session, we do not try to create
-    // unless we set flag force
-
-    let tmp_session_dir = format!("{target_dir}/session_files");
-    fs::create_dir_all(&tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
-
-    if hash.is_empty() || force {
-        info!("Hash for session {} empty. Trying to determine hash.", name);
-        // we access the state object via a json "proxy" object
-        // - we can access fields without needing to traits... but more importantly, this enables to create session for different fields
-        let mut j: Value = serde_json::from_str(
-            &serde_json::to_string_pretty(&state)
-                .expect("Error serializing internal state (Error 1246-28944-24836)"),
-        )
-        .expect("Error parsing session state (Error 2213-735-18099)");
-        j["CREATOR"] = "CREATOR".into();
-        j["RANDOM"] = random_name(20).into(); // define some RANDOM value to ensure that sessions will not have a predictable hash value
-
-        let tmp_name = format!("{tmp_session_dir}/{}", random_name(20));
-        let (code, stdout, stderr) = scone!("scone session read {} > {}", name, tmp_name);
-        let mut do_create = force; // create session, if force is set
-        let mut r = Err("Incorrect code (Error 20336-4334-9699)");
-        if code == 0 {
-            info!("Got session {} .. verifying session now ", name);
-            let (code, stdout, stderr) = scone!("scone session verify {}", tmp_name);
-            let _ = fs::remove_file(tmp_name);
-            if code == 0 {
-                info!("OK: verified  session {}: predecessor='{}'", name, stdout);
-                j["predecessor"] = stdout.clone().into();
-            } else {
-                error!("Error verifying session {}: {} {}", name, stdout, stderr);
-                return Err("Error reading session. (Error 28030-29956-32283)");
-            }
-            r = Ok(stdout);
-        } else {
-            let _ = fs::remove_file(tmp_name);
-            do_create = true; // create session, if we cannot read session - might not yet exist
-            info!(
-                "Reading of session {} failed! Trying to create session. {} {}",
-                name, stdout, stderr
-            );
-            j["predecessor"] = "~".into();
-        };
-        if do_create {
-            let mut reg = Handlebars::new();
-            reg.set_strict_mode(true);
-            reg.register_escape_fn(no_escape);
-            let filename = format!("{tmp_session_dir}/{}", random_name(20));
-            {
-                let mut f = OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .create(true)
-                    .open(&filename)
-                    .expect("Unable to open file '{filename}' (Error 23526-16225-1902)");
-                info!("session template={template}");
-                // create session from session template and check if correct
-                let out = reg
-                    .render_template(template, &j)
-                    .expect("error rendering template (Error 5164-11338-3399)");
-                f.write_all(out.as_bytes())
-                    .expect("Unable to write file '{filename}' (Error 232-434-272387)");
-            }
-            let (code, stdout, stderr) = scone!("scone session check {}", &filename);
-            if code != 0 {
-                error!(
-                    "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
-                    &filename, name, stderr
-                );
-                // let _ = fs::remove_file(&filename);
-                return Err(
-                    "Session template seems to be incorrect - have a look at file. (Error 32608-18428-12247)",
-                );
-            }
-            info!("Session template for {}: is correct: {}", name, stdout);
-
-            // try to create / update the session
-            let (code, stdout, stderr) = scone!("scone session create {}", &filename);
-            // let _ = fs::remove_file(&filename);
-            if code == 0 {
-                info!("Created session {}: {}", name, stdout);
-                r = Ok(stdout);
-            } else {
-                info!(
-                    "Creation of session {} failed (Error 2323-49929-90239): {} - see file {}",
-                    name, stderr, &filename
-                );
-                r = Err("failed to create session. (Error 8583-25322-21167)")
-            }
-        }
-        r
-    } else {
-        Ok(hash.to_string())
-    }
+    create_session_with_config(name, hash, template, state, force, target_dir, None)
 }
 
+/// Create CAS session
+/// 
+/// The communication with the CAS will either take place by executing the commands using the spawn_server
+/// (if installed) either directly over scone cli (if installed), or docker (if installed).
+/// If spawn_server is running, this will be prioritized over the direct use of scone or docker.
+/// 
+/// `target_dir` the directory where the `session_files` directory will be created.
+/// All session files will be saved to `target_dir/session_files`.
+/// The `target_dir` path must be releative to the current directory,
+/// if docker will be used to execute the commands.
+///
+/// `config_cli` will be used as SCONE_CLI_CONFIG if provided.
+/// The `config_cli` path must be releative to the current directory,
+/// if docker will be used to execute the commands.
 pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
     name: &str,
     hash: &str,
@@ -264,12 +261,11 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
     target_dir: &String,
     config_cli: Option<&str>,
 ) -> Result<String, &'static str> {
-    // if we already know the hash of the session, we do not try to create
-    // unless we set flag force
-
     let tmp_session_dir = format!("{target_dir}/session_files");
     fs::create_dir_all(&tmp_session_dir).unwrap_or_else(|_| panic!("Failed to create  directory '{tmp_session_dir}' for session files (Error 25235-11010-6922)"));
 
+    // if we already know the hash of the session, we do not try to create
+    // unless we set flag force
     if hash.is_empty() || force {
         info!("Hash for session {} empty. Trying to determine hash.", name);
         // we access the state object via a json "proxy" object
@@ -283,12 +279,16 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
         j["RANDOM"] = random_name(20).into(); // define some RANDOM value to ensure that sessions will not have a predictable hash value
 
         let tmp_name = format!("{tmp_session_dir}/{}", random_name(20));
-        let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session read {name} > {tmp_name}"));
+        let (code, stdout, stderr) = execute_scone_with_config(
+            config_cli,
+            &format!("scone session read {name} > {tmp_name}"),
+        );
         let mut do_create = force; // create session, if force is set
         let mut r = Err("Incorrect code (Error 20336-4334-9699)");
         if code == 0 {
             info!("Got session {} .. verifying session now ", name);
-            let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session verify {tmp_name}"));
+            let (code, stdout, stderr) =
+                execute_scone_with_config(config_cli, &format!("scone session verify {tmp_name}"));
             let _ = fs::remove_file(tmp_name);
             if code == 0 {
                 info!("OK: verified  session {}: predecessor='{}'", name, stdout);
@@ -329,7 +329,10 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 f.write_all(out.as_bytes())
                     .expect("Unable to write file '{filename}' (Error 232-434-272387)");
             }
-            let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session check {}", &filename));
+            let (code, stdout, stderr) = execute_scone_with_config(
+                config_cli,
+                &format!("scone session check {}", &filename),
+            );
             if code != 0 {
                 error!(
                     "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
@@ -343,7 +346,10 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
             info!("Session template for {}: is correct: {}", name, stdout);
 
             // try to create / update the session
-            let (code, stdout, stderr) = execute_scone_with_config(config_cli, &format!("scone session create {}", &filename));
+            let (code, stdout, stderr) = execute_scone_with_config(
+                config_cli,
+                &format!("scone session create {}", &filename),
+            );
             // let _ = fs::remove_file(&filename);
             if code == 0 {
                 info!("Created session {}: {}", name, stdout);
@@ -363,6 +369,14 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
     } else {
         Ok(hash.to_string())
     }
+}
+
+fn execute_scone_with_config(config_cli: Option<&str>, cmd: &str) -> (i32, String, String) {
+    let scone_command = match config_cli {
+        Some(config_file) => format!("SCONE_CLI_CONFIG={config_file} {cmd}"),
+        None => format!("{cmd}"),
+    };
+    scone!("{scone_command}")
 }
 
 use opg::*;
