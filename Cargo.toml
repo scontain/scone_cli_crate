@@ -1,6 +1,6 @@
 [package]
 name = "scone_cli"
-version = "0.1.1"
+version = "1.0.0"
 edition = "2024"
 publish = false
 license = "Unlicense"
@@ -16,5 +16,5 @@ rand = ">=0.9.0"
 shells = "*"
 opg = "*"
 #get_if_addrs = "0.5.3"
-once_cell = "*"
-signpolicy = { version = "*", git = "https://github.com/scontain/signpolicy.git" }
+signpolicy = { git = "https://github.com/scontain/signpolicy.git", branch = "main" }
+spawn_server = { git = "https://github.com/scontain/spawn_server.git", branch = "main" }
