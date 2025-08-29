@@ -116,7 +116,7 @@ macro_rules! scone {
 // and the scone! macro does not handle that case.
 fn execute_scone_with_config(config_cli: Option<&str>, cmd: &str) -> (i32, String, String) {
     match config_cli {
-        Some(config_file) => local!("SCONE_CONFIG_CLI={config_file} SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}"),
+        Some(config_file) => local!("SCONE_CLI_CONFIG={config_file} SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}"),
         None => scone!("{cmd}"),
     }
 }
