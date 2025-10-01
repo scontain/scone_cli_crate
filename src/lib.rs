@@ -40,7 +40,7 @@ pub fn shell_command() -> &'static ShellCommand {
 fn compute_shell_command() -> ShellCommand {
     info!("Determining how to execute the shell commands");
 
-    let (rc, _stdout, _stderr) = spawn_server::sh!("scone --version");
+    let (rc, _stdout, _stderr) = spawn_server::srpc!("scone --version");
 
     if rc == 0 {
         info!("Both spawn_server and scone cli are installed");
@@ -111,7 +111,7 @@ pub fn get_version() -> String {
 /// the fork. Make sure to use `SCONE_FORK`=1 (or --fork if signed) if `spawn_server` is not used.
 pub fn execute_non_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     match *shell_command() {
-        ShellCommand::SpawnServerSconeCli | ShellCommand::SpawnServerDocker | ShellCommand::SpawnServer => spawn_server::sh!("{cmd}"),
+        ShellCommand::SpawnServerSconeCli | ShellCommand::SpawnServerDocker | ShellCommand::SpawnServer => spawn_server::srpc!("{cmd}"),
         ShellCommand::Docker | ShellCommand::SconeCli | ShellCommand::None => execute_local(shell, cmd),
     }
 }
@@ -125,10 +125,10 @@ pub fn execute_non_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
 pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     match *shell_command() {
         ShellCommand::SpawnServerSconeCli => {
-            spawn_server::sh!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}")
+            spawn_server::srpc!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}")
         }
         ShellCommand::SpawnServerDocker => {
-            spawn_server::sh!("{}", build_docker_command(cmd))
+            spawn_server::srpc!("{}", build_docker_command(cmd))
         }
         ShellCommand::SconeCli => execute_local(
             shell,
