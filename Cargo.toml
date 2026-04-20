@@ -1,6 +1,6 @@
 [package]
 name = "scone_cli"
-version = "1.0.1"
+version = "1.1.1"
 edition = "2024"
 publish = false
 license = "Unlicense"
@@ -8,13 +8,12 @@ license = "Unlicense"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = { version = "*", features = ["derive"] }
-serde_json = "*"
-log = "*"
-handlebars = "*"
-shells = "*"
-opg = "*"
-#get_if_addrs = "0.5.3"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+log = "0.4.29"
+handlebars = "6.4.0"
+shells = "0.2.0"
+opg = "0.2.1"
 signpolicy = { git = "https://github.com/scontain/signpolicy.git", branch = "main" }
 spawn_server = { git = "https://github.com/scontain/spawn_server.git", branch = "main" }
 rand =  "0.9.2" 

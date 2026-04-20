@@ -1,3 +1,5 @@
+#![allow(non_local_definitions)]
+
 use handlebars::JsonValue;
 use handlebars::{Handlebars, no_escape};
 use log::{error, info, warn};
@@ -18,7 +20,6 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
 const DOCKER_NETWORK: &str = ""; // --network=host
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellCommand {
@@ -62,13 +63,13 @@ fn compute_shell_command() -> ShellCommand {
         };
     }
 
-    return if local_docker_installed() {
+    if local_docker_installed() {
         info!("docker and spawn_server, but not scone cli, is installed");
         ShellCommand::SpawnServerDocker
     } else {
         info!("spawn_server, but neither docker nor scone cli, is installed");
         ShellCommand::SpawnServer
-    };
+    }
 }
 
 pub fn local_scone_installed() -> bool {
@@ -85,7 +86,7 @@ pub fn local_docker_installed() -> bool {
     }
 }
 
-// TODO: deprecate this in favor of local_scone_installed()? Or extend to be true for Kubernetes containers too?
+/// WARNING: Will be deprecated in the next major release, in favor of `local_scone_installed()`
 pub fn is_running_in_container() -> bool {
     // podman create /run/.containerenv inside containers
     // https://github.com/containers/podman/blob/main/docs/source/markdown/podman-run.1.md.in
@@ -107,37 +108,53 @@ pub fn get_version() -> String {
 }
 
 /// Execute a command locally (use `execute_scone_cli` if the command is scone or rust-cli)
-/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding 
+/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding
 /// the fork. Make sure to use `SCONE_FORK`=1 (or --fork if signed) if `spawn_server` is not used.
+///
+/// WARNING: Will be deprecated in the next major release, in favor of `spawn_server::sync_remote_or_local`
 pub fn execute_non_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     match *shell_command() {
-        ShellCommand::SpawnServerSconeCli | ShellCommand::SpawnServerDocker | ShellCommand::SpawnServer => spawn_server::srpc!("{cmd}"),
-        ShellCommand::Docker | ShellCommand::SconeCli | ShellCommand::None => execute_local(shell, cmd),
+        ShellCommand::SpawnServerSconeCli
+        | ShellCommand::SpawnServerDocker
+        | ShellCommand::SpawnServer => spawn_server::srpc!("{cmd}"),
+        ShellCommand::Docker | ShellCommand::SconeCli | ShellCommand::None => {
+            execute_local(shell, cmd)
+        }
     }
 }
 
-/// Execute a scone or rust-cli command locally (use `execute_non_scone_cli` for other commands)
+/// Execute a scone or rust-cli command locally with the provided env vars set.
+/// (Use `spawn_server::sync_remote_or_local` for other commands.)
 ///
-/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding 
+/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding
 /// the fork. Make sure to use `SCONE_FORK`=1 (or --fork if signed), if `spawn_server` is not used.
 /// If `scone` is not installed locally, the command will be executed in a docker container.
 /// If `docker` is not installed either, we bail.
-pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
+fn execute_scone_cli(
+    shell: &str,
+    cmd: &str,
+    env: impl IntoIterator<Item = (&'static str, &'static str)>,
+) -> (i32, String, String) {
+    let env_vec: Vec<_> = env.into_iter().collect();
     match *shell_command() {
         ShellCommand::SpawnServerSconeCli => {
-            spawn_server::srpc!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}")
+            let full_command = construct_shell_command_with_env(cmd, env_vec);
+            spawn_server::srpc!("{full_command}")
         }
         ShellCommand::SpawnServerDocker => {
-            spawn_server::srpc!("{}", build_docker_command(cmd))
+            let docker_env = construct_docker_env(env_vec);
+            spawn_server::srpc!("{}", build_docker_command(cmd, &docker_env))
         }
-        ShellCommand::SconeCli => execute_local(
-            shell,
-            &format!("SCONE_PRODUCTION=0 SCONE_NO_TIME_THREAD=1 {cmd}"),
-        ),
+        ShellCommand::SconeCli => {
+            let full_command = construct_shell_command_with_env(cmd, env_vec);
+            execute_local(shell, &full_command)
+        }
         ShellCommand::Docker => {
-            execute_local(shell, &format!("{}", build_docker_command(cmd)))
+            let docker_env = construct_docker_env(env_vec);
+            let cmd = build_docker_command(cmd, &docker_env);
+            execute_local(shell, &cmd)
         }
-        ShellCommand::SpawnServer | ShellCommand::None => (
+        _ => (
             -3,
             String::new(),
             format!(
@@ -147,7 +164,112 @@ pub fn execute_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
     }
 }
 
-fn build_docker_command(scone_command: &str) -> String {
+pub const DEBUG_SCONE_CLI_ENV: &[(&str, &str)] = &[
+    ("SCONE_PRODUCTION", "0"),
+    ("SCONE_NO_TIME_THREAD", "1"),
+    ("SCONE_MODE", "sim"),
+];
+
+/// Executes a SCONE cli command in one of the supported modes.
+/// Use local!() for non-SCONE cli commands.
+///
+/// Supported modes:
+/// - debug
+/// - production
+/// - custom
+///
+/// # Examples
+/// ```
+/// exec_scone!(debug, "scone cas list");
+/// ```
+/// executes the equivalence of `{DEBUG_SCONE_CLI_ENV} scone cas list`
+///
+/// ```
+/// exec_scone!(production, "scone cas list");
+/// ```
+/// executes the equivalence of `scone cas list`
+///
+/// ```
+/// exec_scone!(custom, "SCONE_LOG=debug", "scone cas list");
+/// ```
+/// executes the equivalence of `SCONE_LOG=debug scone cas list`
+#[macro_export]
+macro_rules! exec_scone {
+    (debug, $( $cmd:tt )* ) => {{
+        $crate::execute_scone_cli(
+            "sh",
+            &format!($( $cmd )*),
+            DEBUG_SCONE_CLI_ENV.iter().copied(),
+        )
+    }};
+
+    (production, $( $cmd:tt )* ) => {{
+        $crate::execute_scone_cli(
+            "sh",
+            &format!($( $cmd )*),
+            Vec::new(),
+        )
+    }};
+
+    (custom, $env:expr, $( $cmd:tt )* ) => {{
+        $crate::execute_scone_cli(
+            "sh",
+            &format!($( $cmd )*),
+            $env,
+        )
+    }};
+}
+
+/// Executes a SCONE cli command. Use local!() for non-SCONE cli commands.
+///
+/// WARNING: This macro runs the SCONE cli command in debug mode.
+/// Use exec_scone!() for other options.
+///
+/// **Breaking change in next major version:**
+/// The behavior of this function will change to *production mode*.
+/// To keep the current behavior, use [`exec_scone!(debug, ...)`].
+///
+/// # Examples
+/// ```
+/// scone!("scone cas list");
+/// ```
+/// executes the equivalence of `{DEBUG_SCONE_CLI_ENV} scone cas list`
+#[macro_export]
+macro_rules! scone {
+    ( $( $cmd:tt )* ) => {{
+        $crate::execute_scone_cli(
+            "sh",
+            &format!($( $cmd )*),
+            DEBUG_SCONE_CLI_ENV.iter().copied(),
+        )
+    }};
+}
+
+fn construct_shell_command_with_env(cmd: &str, envs: Vec<(&str, &str)>) -> String {
+    let env_vec: Vec<_> = envs.into_iter().collect();
+    let prefix = env_vec
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{prefix} {cmd}")
+}
+
+fn construct_docker_env(
+    envs: Vec<(&str, &str)>,
+    //    env: impl IntoIterator<Item = (&'static str, &'static str)>,
+) -> Vec<String> {
+    let env_vec: Vec<_> = envs.into_iter().collect();
+    let mut args = vec![];
+
+    for (k, v) in &env_vec {
+        args.push("-e".to_string());
+        args.push(format!("{k}={v}"));
+    }
+    args
+}
+
+fn build_docker_command(scone_command: &str, env_args: &[String]) -> String {
     let repo = match env::var("SCONECTL_REPO") {
         Ok(repo) => repo,
         Err(_err) => "registry.scontain.com/sconectl".to_string(),
@@ -178,22 +300,16 @@ fn build_docker_command(scone_command: &str) -> String {
         Err(_e) => "-v /var/run/docker.sock:/var/run/docker.sock".to_string(),
     };
 
+    let env_vars_str = env_args.join(" ");
     let docker_command = format!(
-        r#"docker run --rm --platform linux/amd64 --add-host=host.docker.internal:host-gateway {DOCKER_NETWORK} -e SCONE_NO_TIME_THREAD=1 -e SCONE_PRODUCTION=0 -e SCONE_MODE="sim" --entrypoint="" -e "SCONECTL_REPO={repo}" {vol} -v "$HOME/.docker:/home/root/.docker" -v "$HOME/.cas:/home/nonroot/.cas" -v "$HOME/.scone:/home/nonroot/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{} sh -c '{scone_command}'"#,
+        r#"docker run --rm --platform linux/amd64 --add-host=host.docker.internal:host-gateway {DOCKER_NETWORK} {env_vars_str} --entrypoint="" -e "SCONECTL_REPO={repo}" {vol} -v "$HOME/.docker:/home/root/.docker" -v "$HOME/.cas:/home/nonroot/.cas" -v "$HOME/.scone:/home/nonroot/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{} sh -c '{scone_command}'"#,
         get_version()
     );
     info!("Executing: {docker_command}");
-
     docker_command
 }
 
-#[macro_export]
-macro_rules! scone {
-    ( $( $cmd:tt )* ) => {{
-        $crate::execute_scone_cli("sh", &format!($( $cmd )*))
-    }};
-}
-
+/// WARNING: Will be deprecated in the next major release
 pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
     let mut command = {
         let mut command = ::std::process::Command::new(shell);
@@ -215,8 +331,9 @@ pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
     }
 }
 
-/// Macro to execute the given command using the Posix Shell.
+/// Macro to execute the given command using the Posix shell.
 ///
+/// WARNING: Will be deprecated in the next major release, in favor of `spawn_server::srpc_sh`
 #[macro_export]
 macro_rules! local {
     ( $( $cmd:tt )* ) => {{
@@ -225,7 +342,7 @@ macro_rules! local {
 }
 
 /// Create CAS session
-/// 
+///
 /// (see `create_session_with_config`)
 pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     name: &str,
@@ -239,11 +356,11 @@ pub fn create_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
 }
 
 /// Create CAS session
-/// 
+///
 /// The communication with the CAS will either take place by executing the commands using the spawn_server
 /// (if installed) either directly over scone cli (if installed), or docker (if installed).
 /// If spawn_server is running, this will be prioritized over the direct use of scone or docker.
-/// 
+///
 /// `target_dir` the directory where the `session_files` directory will be created.
 /// All session files will be saved to `target_dir/session_files`.
 /// The `target_dir` path must be releative to the current directory,
@@ -374,7 +491,7 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
 fn execute_scone_with_config(config_cli: Option<&str>, cmd: &str) -> (i32, String, String) {
     let scone_command = match config_cli {
         Some(config_file) => format!("SCONE_CLI_CONFIG={config_file} {cmd}"),
-        None => format!("{cmd}"),
+        None => cmd.to_string(),
     };
     scone!("{scone_command}")
 }
