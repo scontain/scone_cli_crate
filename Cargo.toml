@@ -1,6 +1,6 @@
 [package]
 name = "scone_cli"
-version = "1.1.1"
+version = "2.0.0"
 edition = "2024"
 publish = false
 license = "Unlicense"

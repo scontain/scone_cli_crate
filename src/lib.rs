@@ -15,7 +15,6 @@ use std::fs::OpenOptions;
 use std::io;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::path::Path;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
@@ -86,13 +85,6 @@ pub fn local_docker_installed() -> bool {
     }
 }
 
-/// WARNING: Will be deprecated in the next major release, in favor of `local_scone_installed()`
-pub fn is_running_in_container() -> bool {
-    // podman create /run/.containerenv inside containers
-    // https://github.com/containers/podman/blob/main/docs/source/markdown/podman-run.1.md.in
-    Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
-}
-
 static VERSION: OnceLock<Mutex<String>> = OnceLock::new();
 
 fn ensure_version() -> &'static Mutex<String> {
@@ -107,34 +99,66 @@ pub fn get_version() -> String {
     ensure_version().lock().unwrap().clone()
 }
 
-/// Execute a command locally (use `execute_scone_cli` if the command is scone or rust-cli)
-/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding
-/// the fork. Make sure to use `SCONE_FORK`=1 (or --fork if signed) if `spawn_server` is not used.
-///
-/// WARNING: Will be deprecated in the next major release, in favor of `spawn_server::sync_remote_or_local`
-pub fn execute_non_scone_cli(shell: &str, cmd: &str) -> (i32, String, String) {
-    match *shell_command() {
-        ShellCommand::SpawnServerSconeCli
-        | ShellCommand::SpawnServerDocker
-        | ShellCommand::SpawnServer => spawn_server::srpc!("{cmd}"),
-        ShellCommand::Docker | ShellCommand::SconeCli | ShellCommand::None => {
-            execute_local(shell, cmd)
+/// logs a warning if the command does not contain `scone` or `rust-cli`
+fn warn_on_non_scone_cli(cmd: &str) {
+    let allowed = ["scone", "rust-cli"];
+
+    // Split by whitespace
+    let mut parts = cmd.split_whitespace().peekable();
+
+    // Skip leading env assignments like KEY=VALUE
+    while let Some(part) = parts.peek() {
+        if is_env_assignment(part) {
+            parts.next();
+        } else {
+            break;
         }
+    }
+
+    // First non-env token is the command
+    if let Some(command) = parts.next() {
+        if !allowed.contains(&command) {
+            warn!(
+                "Unexpected command '{command}' in {cmd}. Expected commands {}. Consider using spawn_server (e.g., srpc_sh!) instead of scone_cli.",
+                allowed.join(" or ")
+            );
+        }
+    } else {
+        // No command at all (empty or only env vars)
+        warn!(
+            "No executable command found in '{cmd}' Expected commands {}",
+            allowed.join(" or ")
+        );
+    }
+}
+
+fn is_env_assignment(s: &str) -> bool {
+    // Must contain '=' and not start with '='
+    // and the key part should be a valid-ish env var name
+    if let Some(eq_pos) = s.find('=') {
+        let (key, _) = s.split_at(eq_pos);
+        !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    } else {
+        false
     }
 }
 
 /// Execute a scone or rust-cli command locally with the provided env vars set.
 /// (Use `spawn_server::sync_remote_or_local` for other commands.)
 ///
-/// The command will be executed locally using the `spawn_server` (if installed), thus avoiding
-/// the fork. Make sure to use `SCONE_FORK`=1 (or --fork if signed), if `spawn_server` is not used.
-/// If `scone` is not installed locally, the command will be executed in a docker container.
+/// If `spawn_server` is installed, the command will be executed locally
+/// using `spawn_server` to avoiding the fork.
+/// Independently of whether `spawn_server` is installed, if `scone` is
+/// not installed locally, the command will be executed in a docker container.
 /// If `docker` is not installed either, we bail.
-fn execute_scone_cli(
+///
+/// Make sure to use `SCONE_FORK`=1 (or --fork if signed), if `spawn_server` is not available.
+pub fn execute_scone_cli(
     shell: &str,
     cmd: &str,
     env: impl IntoIterator<Item = (&'static str, &'static str)>,
 ) -> (i32, String, String) {
+    warn_on_non_scone_cli(cmd);
     let env_vec: Vec<_> = env.into_iter().collect();
     match *shell_command() {
         ShellCommand::SpawnServerSconeCli => {
@@ -147,18 +171,18 @@ fn execute_scone_cli(
         }
         ShellCommand::SconeCli => {
             let full_command = construct_shell_command_with_env(cmd, env_vec);
-            execute_local(shell, &full_command)
+            fork_shell_command(shell, &full_command)
         }
         ShellCommand::Docker => {
             let docker_env = construct_docker_env(env_vec);
-            let cmd = build_docker_command(cmd, &docker_env);
-            execute_local(shell, &cmd)
+            let full_command = build_docker_command(cmd, &docker_env);
+            fork_shell_command(shell, &full_command)
         }
-        _ => (
+        ShellCommand::SpawnServer | ShellCommand::None => (
             -3,
             String::new(),
             format!(
-                "Failed to execute command '{cmd}': Neither 'scone' nor 'docker' is installed (ERROR 20154-13302-17922)"
+                "Failed to execute SCONE command '{cmd}': Neither 'scone' nor 'docker' is installed (ERROR 20154-13302-17922)"
             ),
         ),
     }
@@ -171,7 +195,7 @@ pub const DEBUG_SCONE_CLI_ENV: &[(&str, &str)] = &[
 ];
 
 /// Executes a SCONE cli command in one of the supported modes.
-/// Use local!() for non-SCONE cli commands.
+/// Use `spawn_server::srpc_sh!()` for non-SCONE cli commands.
 ///
 /// Supported modes:
 /// - debug
@@ -220,27 +244,25 @@ macro_rules! exec_scone {
     }};
 }
 
-/// Executes a SCONE cli command. Use local!() for non-SCONE cli commands.
+/// Executes a SCONE cli command. See `exec_scone!()` for more information.
+/// (Use `spawn_server::srpc_sh!()` for non-SCONE cli commands.)
 ///
-/// WARNING: This macro runs the SCONE cli command in debug mode.
-/// Use exec_scone!() for other options.
-///
-/// **Breaking change in next major version:**
-/// The behavior of this function will change to *production mode*.
-/// To keep the current behavior, use [`exec_scone!(debug, ...)`].
+/// This macro runs the SCONE cli command in production mode (assuming the
+/// current environment allows it).
+/// Use `exec_scone!()` for other options.
 ///
 /// # Examples
 /// ```
 /// scone!("scone cas list");
 /// ```
-/// executes the equivalence of `{DEBUG_SCONE_CLI_ENV} scone cas list`
+/// executes the equivalence of `scone cas list`
 #[macro_export]
 macro_rules! scone {
     ( $( $cmd:tt )* ) => {{
         $crate::execute_scone_cli(
             "sh",
             &format!($( $cmd )*),
-            DEBUG_SCONE_CLI_ENV.iter().copied(),
+            Vec::new(),
         )
     }};
 }
@@ -309,8 +331,7 @@ fn build_docker_command(scone_command: &str, env_args: &[String]) -> String {
     docker_command
 }
 
-/// WARNING: Will be deprecated in the next major release
-pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
+fn fork_shell_command(shell: &str, cmd: &str) -> (i32, String, String) {
     let mut command = {
         let mut command = ::std::process::Command::new(shell);
         command.arg("-c").arg(cmd);
@@ -329,16 +350,6 @@ pub fn execute_local(shell: &str, cmd: &str) -> (i32, String, String) {
 
         Err(e) => (126, String::new(), e.to_string()),
     }
-}
-
-/// Macro to execute the given command using the Posix shell.
-///
-/// WARNING: Will be deprecated in the next major release, in favor of `spawn_server::srpc_sh`
-#[macro_export]
-macro_rules! local {
-    ( $( $cmd:tt )* ) => {{
-        $crate::execute_non_scone_cli("sh", &format!($( $cmd )*))
-    }};
 }
 
 /// Create CAS session
@@ -857,7 +868,7 @@ spec:
 
     // // check if we need to upload the session to CAS directly
     // if mode == PolicyHandling::EncryptedManifest {
-    //     let (code, stdout, stderr) = local!("kubectl apply -f {encrypted_session_manifest}");
+    //     let (code, stdout, stderr) = spawn_server::srpc_sh!("kubectl apply -f {encrypted_session_manifest}");
     //     if code == 0 {
     //         info!("Created encrypted session {name} with kubectl: {stdout}");
     //     } else {
