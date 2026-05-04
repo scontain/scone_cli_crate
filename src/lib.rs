@@ -223,7 +223,7 @@ macro_rules! exec_scone {
         $crate::execute_scone_cli(
             "sh",
             &format!($( $cmd )*),
-            DEBUG_SCONE_CLI_ENV.iter().copied(),
+            $crate::DEBUG_SCONE_CLI_ENV.iter().copied(),
         )
     }};
 
