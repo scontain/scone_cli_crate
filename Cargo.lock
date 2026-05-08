@@ -2017,9 +2017,9 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "reqwest"
-version = "0.13.3"
+version = "0.12.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
+checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64",
  "bytes",
@@ -2041,6 +2041,46 @@ dependencies = [
  "native-tls",
  "percent-encoding",
  "pin-project-lite",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper",
+ "tokio",
+ "tokio-native-tls",
+ "tower",
+ "tower-http",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "reqwest"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
+dependencies = [
+ "base64",
+ "bytes",
+ "encoding_rs",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "h2 0.4.13",
+ "http 1.4.0",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "js-sys",
+ "log",
+ "mime",
+ "percent-encoding",
+ "pin-project-lite",
  "quinn",
  "rustls",
  "rustls-pki-types",
@@ -2049,7 +2089,6 @@ dependencies = [
  "serde_json",
  "sync_wrapper",
  "tokio",
- "tokio-native-tls",
  "tokio-rustls",
  "tower",
  "tower-http",
@@ -2099,7 +2138,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2156,7 +2195,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2209,7 +2248,7 @@ dependencies = [
 
 [[package]]
 name = "scone_cli"
-version = "2.0.1"
+version = "2.0.0"
 dependencies = [
  "handlebars",
  "log",
@@ -2368,14 +2407,14 @@ dependencies = [
 [[package]]
 name = "signpolicy"
 version = "0.2.3"
-source = "git+https://github.com/scontain/signpolicy.git?branch=main#4659fdc5d28c418fad69cc6b0ea6a521f90ecc1a"
+source = "git+https://github.com/scontain/signpolicy.git?rev=2b41a1e7a247dfabf902b194a4bb798ae5e2c342#2b41a1e7a247dfabf902b194a4bb798ae5e2c342"
 dependencies = [
  "anyhow",
  "argfile",
  "clap",
  "env_logger",
  "log",
- "reqwest",
+ "reqwest 0.13.3",
  "serde",
  "serde_derive",
  "serde_json",
@@ -2440,11 +2479,11 @@ dependencies = [
 [[package]]
 name = "spawn_server"
 version = "1.0.0"
-source = "git+https://github.com/scontain/spawn_server.git?branch=main#77e987045f8815ff4e9da9a669a9d4a8f64c0f92"
+source = "git+https://github.com/scontain/spawn_server.git?rev=8b9677ba4eb345b0782abc3e0366c8366eee90ad#8b9677ba4eb345b0782abc3e0366c8366eee90ad"
 dependencies = [
  "actix-rt",
  "actix-web",
- "reqwest",
+ "reqwest 0.12.28",
  "serde",
  "serde_derive",
  "serde_json",
@@ -2543,10 +2582,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3086,7 +3125,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
