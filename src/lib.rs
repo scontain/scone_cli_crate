@@ -459,12 +459,12 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
             }
             let (code, stdout, stderr) = execute_scone_with_config(
                 config_cli,
-                &format!("scone session check {}", &filename),
+                &format!("scone session check {}", filename),
             );
             if code != 0 {
                 error!(
                     "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
-                    &filename, name, stderr
+                    filename, name, stderr
                 );
                 // let _ = fs::remove_file(&filename);
                 return Err(
@@ -476,7 +476,7 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
             // try to create / update the session
             let (code, stdout, stderr) = execute_scone_with_config(
                 config_cli,
-                &format!("scone session create {}", &filename),
+                &format!("scone session create {}", filename),
             );
             // let _ = fs::remove_file(&filename);
             if code == 0 {
@@ -488,7 +488,7 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
             } else {
                 info!(
                     "Creation of session {} failed (Error 2323-49929-90239): {} - see file {}",
-                    name, stderr, &filename
+                    name, stderr, filename
                 );
                 r = Err("failed to create session. (Error 8583-25322-21167)")
             }
@@ -664,7 +664,7 @@ pub fn sign_encrypt_session<'a, T: Serialize + for<'de> Deserialize<'de>>(
     if code != 0 {
         error!(
             "Session {}: description in '{}' contains errors (Error 289-2193-9128): {}",
-            &filename, name, stderr
+            filename, name, stderr
         );
         // let _ = fs::remove_file(&filename);
         return Err(
