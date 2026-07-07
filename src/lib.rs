@@ -87,6 +87,7 @@ pub fn get_version() -> String {
     ensure_version().lock().unwrap().clone()
 }
 
+#[derive(Clone, Debug)]
 pub struct SconeCliCommandResult {
     pub exit_code: i32,
     pub stdout: String,
@@ -100,6 +101,28 @@ impl From<SpawnServerCommandResponse> for SconeCliCommandResult {
             stdout: r.stdout,
             stderr: r.stderr,
         }
+    }
+}
+
+impl std::error::Error for SconeCliCommandResult {}
+
+impl std::fmt::Display for SconeCliCommandResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "command exited with code {}", self.exit_code)?;
+        if !self.stdout.is_empty() {
+            write!(f, "\n  Standard Output:\n")?;
+            for line in self.stdout.lines() {
+                writeln!(f, "    {}", line)?;
+            }
+        }
+
+        if !self.stderr.is_empty() {
+            write!(f, "\n  Standard Error:\n")?;
+            for line in self.stderr.lines() {
+                writeln!(f, "    {}", line)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -152,7 +175,8 @@ where
             srpc_sh!(
                 "{}",
                 build_docker_command(SCONECLI_BINARY, args, &docker_env)
-            ).into()
+            )
+            .into()
         }
         SconeCliCommandType::SconeCli => {
             run_local_exec(SCONECLI_BINARY, args, &env_vec, &env_remove_vec).into()
