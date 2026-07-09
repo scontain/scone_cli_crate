@@ -1,6 +1,6 @@
 [package]
 name = "scone_cli"
-version = "3.0.0"
+version = "3.1.0"
 edition = "2024"
 publish = false
 license = "Unlicense"
@@ -9,4 +9,7 @@ license = "Unlicense"
 
 [dependencies]
 log = "0.4.29"
-spawn_server = { version = "2.0.0", git = "https://github.com/scontain/spawn_server.git", rev = "f91b8e0f0db272f6595ed9a4d23e14a2d82d6d27" }
+spawn_server = { version = "2.1.0", git = "https://github.com/scontain/spawn_server.git", rev = "c7211c04d9fac018326e8c742bf22b9b4c92ceba" }
+anyhow = "1.0"
+semver = "1"
+tempfile = "3"
