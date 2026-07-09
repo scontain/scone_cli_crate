@@ -229,7 +229,26 @@ impl SconeCli {
         Ok(stdout)
     }
 
-    pub fn calculate_session_hash(policy_content: impl AsRef<[u8]>) -> anyhow::Result<String> {
+    pub fn calculate_session_hash_from_file<P: AsRef<Path>>(
+        policy_file_path: P,
+    ) -> anyhow::Result<String> {
+        let path_ref = policy_file_path.as_ref();
+        debug!("Calculating session hash of {:?}", path_ref);
+
+        let args = vec![
+            "session".to_string(),
+            "calculate-hash".to_string(),
+            path_ref.to_string_lossy().into_owned(),
+        ];
+
+        let stdout =
+            Self::try_execute_scone_cli(&args, Vec::<(&str, &str)>::new(), "19175-9146-3013")?;
+        Ok(stdout.trim().to_owned())
+    }
+
+    pub fn calculate_session_hash_from_content(
+        policy_content: impl AsRef<[u8]>,
+    ) -> anyhow::Result<String> {
         debug!("Calculating session hash from policy content");
 
         let mut tmp_policy_file = NamedTempFile::new()?;
@@ -238,16 +257,7 @@ impl SconeCli {
         tmp_policy_file.flush()?;
 
         let filename = tmp_policy_file.path().to_string_lossy();
-        let args = vec![
-            "session".to_string(),
-            "calculate-hash".to_string(),
-            filename.into_owned(),
-        ];
-
-        let stdout =
-            Self::try_execute_scone_cli(&args, Vec::<(&str, &str)>::new(), "3997-10374-20206")?;
-
-        Ok(stdout.trim().to_owned())
+        Self::calculate_session_hash_from_file(filename.as_ref())
     }
     pub fn scone_cas_show_identification(
         arg: Option<&str>,
