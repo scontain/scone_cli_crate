@@ -1633,7 +1633,7 @@ dependencies = [
 
 [[package]]
 name = "scone_cli"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "log",
