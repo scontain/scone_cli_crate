@@ -34,7 +34,7 @@ fn compute_scone_cli_command_type() -> SconeCliCommandType {
         SCONECLI_BINARY,
         ["--version"],
         [("SCONE_PRODUCTION", "0")],
-        ["SCONE_PRODUCTION"]
+        ["SCONE_PRODUCTION", "SCONE_CONFIG_ID"]
     );
 
     if exit_code == 0 {
@@ -68,6 +68,7 @@ pub fn local_scone_installed() -> bool {
     match Command::new(SCONECLI_BINARY)
         .arg("--version")
         .env_remove("SCONE_PRODUCTION")
+        .env_remove("SCONE_CONFIG_ID")
         .env("SCONE_PRODUCTION", "0")
         .output()
     {
