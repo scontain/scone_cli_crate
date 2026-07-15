@@ -457,10 +457,8 @@ pub fn create_session_with_config<'a, T: Serialize + for<'de> Deserialize<'de>>(
                 f.write_all(out.as_bytes())
                     .expect("Unable to write file '{filename}' (Error 232-434-272387)");
             }
-            let (code, stdout, stderr) = execute_scone_with_config(
-                config_cli,
-                &format!("scone session check {}", filename),
-            );
+            let (code, stdout, stderr) =
+                execute_scone_with_config(config_cli, &format!("scone session check {}", filename));
             if code != 0 {
                 error!(
                     "Session {}: description in '{}' contains errors (Error 3289-20383-48910): {}",
