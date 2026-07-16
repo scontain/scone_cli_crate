@@ -124,7 +124,9 @@ impl SconeCli {
             stderr,
         } = execute_scone_cli(args, env, vec!["SCONE_CONFIG_ID"]);
         if exit_code != 0 {
-            bail!("Scone CLI command failed (ERROR {error_code}): {stderr}");
+            bail!(
+                "Scone CLI command failed with exit code {exit_code} (ERROR {error_code}): {stderr}"
+            );
         }
         Ok(stdout)
     }
