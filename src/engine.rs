@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 
 const DOCKER_NETWORK: &str = ""; // --network=host
 
-pub const SCONECLI_BINARY: &str = "scone";
+pub const SCONECLI_BINARY: &str = "/opt/scone/bin/rust-cli";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SconeCliCommandType {
