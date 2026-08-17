@@ -1602,7 +1602,7 @@ dependencies = [
 
 [[package]]
 name = "scone_cli"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "log",
  "spawn_server",
@@ -1789,8 +1789,8 @@ dependencies = [
 
 [[package]]
 name = "spawn_server"
-version = "2.0.0"
-source = "git+https://github.com/scontain/spawn_server.git?rev=f91b8e0f0db272f6595ed9a4d23e14a2d82d6d27#f91b8e0f0db272f6595ed9a4d23e14a2d82d6d27"
+version = "2.1.0"
+source = "git+https://github.com/scontain/spawn_server.git?rev=f4e506d7e59a77378d53eb50cdfacce696aae87a#f4e506d7e59a77378d53eb50cdfacce696aae87a"
 dependencies = [
  "actix-rt",
  "actix-web",
