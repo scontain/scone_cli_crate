@@ -40,7 +40,8 @@ pub fn shell_command() -> &'static ShellCommand {
 fn compute_shell_command() -> ShellCommand {
     info!("Determining how to execute the shell commands");
 
-    let (rc, _stdout, _stderr) = spawn_server::srpc!("scone --version");
+    let spawn_server::SpawnServerCommandResponse { exit_code: rc, .. } =
+        spawn_server::sync_remote_execute_shell("scone --version");
 
     if rc == 0 {
         info!("Both spawn_server and scone cli are installed");
@@ -163,11 +164,21 @@ pub fn execute_scone_cli(
     match *shell_command() {
         ShellCommand::SpawnServerSconeCli => {
             let full_command = construct_shell_command_with_env(cmd, env_vec);
-            spawn_server::srpc!("{full_command}")
+            let spawn_server::SpawnServerCommandResponse {
+                exit_code,
+                stdout,
+                stderr,
+            } = spawn_server::sync_remote_execute_shell(full_command);
+            (exit_code, stdout, stderr)
         }
         ShellCommand::SpawnServerDocker => {
             let docker_env = construct_docker_env(env_vec);
-            spawn_server::srpc!("{}", build_docker_command(cmd, &docker_env))
+            let spawn_server::SpawnServerCommandResponse {
+                exit_code,
+                stdout,
+                stderr,
+            } = spawn_server::sync_remote_execute_shell(build_docker_command(cmd, &docker_env));
+            (exit_code, stdout, stderr)
         }
         ShellCommand::SconeCli => {
             let full_command = construct_shell_command_with_env(cmd, env_vec);

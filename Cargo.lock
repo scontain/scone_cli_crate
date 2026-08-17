@@ -2219,7 +2219,7 @@ dependencies = [
 
 [[package]]
 name = "scone_cli"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "handlebars",
  "log",
@@ -2449,8 +2449,8 @@ dependencies = [
 
 [[package]]
 name = "spawn_server"
-version = "1.0.0"
-source = "git+https://github.com/scontain/spawn_server.git?rev=8b9677ba4eb345b0782abc3e0366c8366eee90ad#8b9677ba4eb345b0782abc3e0366c8366eee90ad"
+version = "2.0.0"
+source = "git+https://github.com/scontain/spawn_server.git?rev=f91b8e0f0db272f6595ed9a4d23e14a2d82d6d27#f91b8e0f0db272f6595ed9a4d23e14a2d82d6d27"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -2458,7 +2458,6 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "shells",
  "tokio",
  "tracing",
  "tracing-actix-web",
