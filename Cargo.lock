@@ -1590,7 +1590,7 @@ dependencies = [
 [[package]]
 name = "spawn_server"
 version = "2.1.2"
-source = "git+https://github.com/scontain/spawn_server.git?rev=32216055844664b937b0836a17e4d772ae31b766#32216055844664b937b0836a17e4d772ae31b766"
+source = "git+https://github.com/scontain/spawn_server.git?rev=99bdf40a1b5e4d2902cef1e1df668b26c0382071#99bdf40a1b5e4d2902cef1e1df668b26c0382071"
 dependencies = [
  "actix-rt",
  "actix-web",
