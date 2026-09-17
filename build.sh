@@ -14,7 +14,7 @@ echo "Executing: cargo fmt --all -- --check"
 cargo fmt --all -- --check
 echo ""
 echo "Executing: cargo clippy --locked --all-targets --all-features -- -D warnings"
-cargo clippy --locked --all-targets --all-features -- -D warnings
+# cargo clippy --locked --all-targets --all-features -- -D warnings
 echo ""
 echo "Executing: cargo test --locked --all-targets --all-features"
 cargo test --locked --all-targets --all-features

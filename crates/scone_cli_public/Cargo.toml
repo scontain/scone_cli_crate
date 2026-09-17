@@ -1,0 +1,17 @@
+[package]
+name = "scone_cli"
+version = "4.0.0"
+edition = "2024"
+publish = false
+license = "Unlicense"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+log = "0.4.29"
+spawn_server = { version = "2.1.2", git = "https://github.com/scontain/spawn_server.git", rev = "99bdf40a1b5e4d2902cef1e1df668b26c0382071" }
+anyhow = { workspace =  true}
+semver =  {workspace = true }
+tempfile = {workspace = true}
+chrono = { workspace = true, features = ["std"] }
+scone_cli_api = { workspace = true}
+serde_json = {workspace = true }
