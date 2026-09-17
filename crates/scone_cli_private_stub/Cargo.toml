@@ -1,0 +1,21 @@
+[package]
+name = "scone_cli_private"
+version = "1.0.0"
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+scone_cli_api = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+# Lets the stub compile. Only this workspace's own checks enable it: a build that uses the stub
+# instead of the private backend fails with the message in `lib.rs`.
+allow-stub = []
+
+[lints]
+workspace = true
