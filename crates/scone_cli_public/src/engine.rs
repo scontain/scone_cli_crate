@@ -90,18 +90,21 @@ fn ensure_version() -> &'static Mutex<String> {
     VERSION.get_or_init(|| Mutex::new(String::from("latest")))
 }
 
-pub fn set_version<S: Into<String>>(version: S) {
-    *ensure_version().lock().unwrap() = version.into();
+pub fn get_scone_docker_version() -> String {
+    ensure_version().lock().unwrap().clone()
 }
 
-pub fn get_version() -> String {
-    ensure_version().lock().unwrap().clone()
+pub fn set_scone_docker_version(version: String) {
+    *ensure_version().lock().unwrap() = version;
 }
 
 #[derive(Clone, Debug)]
 pub struct SconeCliCommandResult {
+    ///  Exit code of the command. 0 means success, non-zero means failure.
     pub exit_code: i32,
+    /// Standard output of the command.
     pub stdout: String,
+    /// Standard error of the command.
     pub stderr: String,
 }
 
@@ -214,6 +217,7 @@ where
     }
 }
 
+/// Environment variables constants used in `exec_scone!()` that executes scone in debug mode.
 pub const DEBUG_SCONE_CLI_ENV: &[(&str, &str)] = &[
     ("SCONE_PRODUCTION", "0"),
     ("SCONE_NO_TIME_THREAD", "1"),
@@ -322,7 +326,7 @@ fn build_docker_command(binary: &str, args: &[String], env_args: &[String]) -> S
 
     let docker_command = format!(
         r#"docker run --rm --platform linux/amd64 --add-host=host.docker.internal:host-gateway {DOCKER_NETWORK} {env_vars_str} --entrypoint="" -e "SCONECTL_REPO={repo}" {vol} -v "$HOME/.docker:/home/root/.docker" -v "$HOME/.cas:/home/nonroot/.cas" -v "$HOME/.scone:/home/nonroot/.scone" -v "$PWD:/wd" -w /wd --user $(id -u):$(id -g) --group-add $(getent group docker | cut -d: -f3)   {repo}/sconecli:{} sh -c '{scone_command}'"#,
-        get_version()
+        get_scone_docker_version()
     );
     info!("Executing: {docker_command}");
     docker_command
