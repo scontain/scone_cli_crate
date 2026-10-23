@@ -214,7 +214,7 @@ where
     }
 }
 
-pub const DEBUG_SCONE_CLI_ENV: &[(&str, &str)] = &[
+const DEBUG_SCONE_CLI_ENV: &[(&str, &str)] = &[
     ("SCONE_PRODUCTION", "0"),
     ("SCONE_NO_TIME_THREAD", "1"),
     ("SCONE_MODE", "sim"),
