@@ -1,0 +1,16 @@
+[package]
+name = "scone_cli_api"
+version = "1.0.0"
+edition.workspace = true
+description = "The single interface implemented by the exec backend (scone_cli_public) and the in-process backend."
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
+
+
+[lints]
+workspace = true
